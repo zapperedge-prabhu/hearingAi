@@ -174,6 +174,13 @@ const mainNavigation = [
       permissions?.contentUnderstanding?.menuVisibility
   },
   {
+    name: "HearingAI",
+    href: "/hearing-ai",
+    icon: Scan,
+    permissionCheck: (permissions: any) => 
+      permissions?.contentUnderstanding?.menuVisibility
+  },
+  {
     name: "Document Translation",
     href: "/document-translation",
     icon: Languages,

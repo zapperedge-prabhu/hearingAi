@@ -20,6 +20,7 @@ import SentinelRules from "./pages/sentinel-rules";
 import SentinelIncidents from "./pages/sentinel-incidents";
 import FoundryAiMgmt from "./pages/foundry-ai-mgmt";
 import ContentDiscovery from "./pages/content-discovery";
+import HearingAI from "./pages/hearing-ai";
 import DocumentTranslation from "./pages/document-translation";
 import Eval from "./pages/eval";
 import SftpUsers from "./pages/sftp-users";
@@ -79,6 +80,7 @@ function Router() {
           <Route path="/sentinel/incidents" component={SentinelIncidents} />
           <Route path="/foundry-ai" component={FoundryAiMgmt} />
           <Route path="/content-discovery" component={ContentDiscovery} />
+          <Route path="/hearing-ai" component={HearingAI} />
           <Route path="/document-translation" component={DocumentTranslation} />
           <Route path="/eval" component={Eval} />
           <Route path="/sftp-users" component={SftpUsers} />
