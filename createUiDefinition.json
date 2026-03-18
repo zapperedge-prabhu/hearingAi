@@ -1,0 +1,827 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/0.1.2-preview/CreateUIDefinition.MultiVm.json#",
+  "handler": "Microsoft.Azure.CreateUIDef",
+  "version": "0.1.2-preview",
+  "parameters": {
+    "basics": [
+      {
+        "name": "webAppName",
+        "type": "Microsoft.Common.TextBox",
+        "label": "Web App Name",
+        "defaultValue": "[toLower(concat('zappermft', substring(replace(replace(replace(replace(replace(utcNow(),'T',''),'-',''),':',''),'.',''),'Z',''),0,14)))]",
+        "toolTip": "Pre-filled as 'zappermft' + UTC yyyymmddHHMMSS for uniqueness and can be edited as per your requirement.",
+        "constraints": {
+          "required": true,
+          "regex": "^[a-z0-9-]{2,60}$",
+          "validationMessage": "Use 2\u201360 chars. Lowercase letters, numbers, and hyphens."
+        },
+        "placeholder": "e.g. zappermft20250913184320"
+      },
+      {
+        "name": "appServicePlanSku",
+        "type": "Microsoft.Common.DropDown",
+        "label": "App Service Plan SKU",
+        "defaultValue": "B1",
+        "toolTip": "Select the pricing tier for your App Service Plan. Basic (B1-B3) for development/testing, Standard (S1-S3) for production workloads, Premium (P1v2-P3v3) for high-performance applications.",
+        "constraints": {
+          "required": true,
+          "allowedValues": [
+            {
+              "label": "Basic B1",
+              "value": "B1"
+            },
+            {
+              "label": "Basic B2",
+              "value": "B2"
+            },
+            {
+              "label": "Basic B3",
+              "value": "B3"
+            },
+            {
+              "label": "Standard S1",
+              "value": "S1"
+            },
+            {
+              "label": "Standard S2",
+              "value": "S2"
+            },
+            {
+              "label": "Standard S3",
+              "value": "S3"
+            },
+            {
+              "label": "Premium P1v2",
+              "value": "P1v2"
+            },
+            {
+              "label": "Premium P2v2",
+              "value": "P2v2"
+            },
+            {
+              "label": "Premium P3v2",
+              "value": "P3v2"
+            },
+            {
+              "label": "Premium P1v3",
+              "value": "P1v3"
+            },
+            {
+              "label": "Premium P2v3",
+              "value": "P2v3"
+            },
+            {
+              "label": "Premium P3v3",
+              "value": "P3v3"
+            }
+          ]
+        }
+      },
+      {
+        "name": "acrName",
+        "type": "Microsoft.Common.TextBox",
+        "label": "ACR Name",
+        "toolTip": "Name of your Azure Container Registry (without .azurecr.io)",
+        "constraints": {
+          "required": true,
+          "validations": [
+            {
+              "regex": "^[a-z0-9]{5,50}$",
+              "message": "ACR name must be 5-50 lowercase alphanumeric characters."
+            }
+          ]
+        },
+        "defaultValue": "zapperedgedocker",
+        "visible": false
+      },
+      {
+        "name": "acrResourceGroup",
+        "type": "Microsoft.Common.TextBox",
+        "label": "ACR Resource Group",
+        "toolTip": "Resource group where the ACR is deployed",
+        "constraints": {
+          "required": true,
+          "validations": [
+            {
+              "regex": "^[a-zA-Z0-9._()-]{1,90}$",
+              "message": "Resource group name: 1-90 characters, alphanumeric with ._()-"
+            }
+          ]
+        },
+        "defaultValue": "rg_sample_customer",
+        "visible": false
+      },
+      {
+        "name": "acrSubscriptionId",
+        "type": "Microsoft.Common.TextBox",
+        "label": "ACR Subscription ID",
+        "toolTip": "Subscription ID of the ACR. Hidden because deployment picks current subscription automatically.",
+        "constraints": {
+          "required": false,
+          "validations": [
+            {
+              "regex": "^([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})?$",
+              "message": "Must be a valid subscription GUID or empty."
+            }
+          ]
+        },
+        "defaultValue": "",
+        "visible": false
+      },
+      {
+        "name": "acrPullIdentityResourceId",
+        "type": "Microsoft.Common.TextBox",
+        "label": "User Assigned Managed Identity for ACR (optional)",
+        "toolTip": "Resource ID of a user-assigned managed identity that already has AcrPull role on the specified ACR. Provide this to allow cross-subscription image pulls without additional role assignment.",
+        "constraints": {
+          "required": false,
+          "validations": [
+            {
+              "regex": "^(/subscriptions/[a-f0-9-]+/resourceGroups/[a-zA-Z0-9._()-]+/providers/Microsoft\\.ManagedIdentity/userAssignedIdentities/[a-zA-Z0-9-]+)?$",
+              "message": "Must be a valid Azure Resource ID or empty."
+            }
+          ]
+        },
+        "defaultValue": "",
+        "visible": false
+      },
+      {
+        "name": "acrPullIdentityClientId",
+        "type": "Microsoft.Common.TextBox",
+        "label": "User Assigned Managed Identity Client ID for ACR (optional)",
+        "toolTip": "Client ID (application ID) of the user-assigned managed identity used for pulling images. If you provide a resource ID above, also provide its client ID here to ensure seamless authentication across subscriptions. Leave blank if not applicable.",
+        "constraints": {
+          "required": false,
+          "validations": [
+            {
+              "regex": "^([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})?$",
+              "message": "Must be a valid GUID format or empty."
+            }
+          ]
+        },
+        "defaultValue": "",
+        "visible": false
+      },
+      {
+        "name": "imageName",
+        "type": "Microsoft.Common.TextBox",
+        "label": "Container Image Name (repository)",
+        "toolTip": "Name of the container image (e.g. myapp)",
+        "constraints": {
+          "required": true,
+          "validations": [
+            {
+              "regex": "^[a-z0-9._/-]{1,256}$",
+              "message": "Image name: 1-256 characters, lowercase alphanumeric with ._/-"
+            }
+          ]
+        },
+        "defaultValue": "zapper-final",
+        "visible": false
+      },
+      {
+        "name": "imageTag",
+        "type": "Microsoft.Common.TextBox",
+        "label": "Container Image Tag",
+        "toolTip": "Image tag (e.g. v1.0.0)",
+        "constraints": {
+          "required": true,
+          "validations": [
+            {
+              "regex": "^[a-zA-Z0-9._-]{1,128}$",
+              "message": "Image tag: 1-128 characters, alphanumeric with ._-"
+            }
+          ]
+        },
+        "defaultValue": "v519",
+        "visible": false
+      },
+      {
+        "name": "imageSourceType",
+        "type": "Microsoft.Common.OptionsGroup",
+        "label": "Image Source",
+        "defaultValue": "existing",
+        "constraints": {
+          "required": true,
+          "allowedValues": [
+            {
+              "label": "Image already exists in target ACR",
+              "value": "existing"
+            },
+            {
+              "label": "Import image from another ACR (cross‑subscription)",
+              "value": "import"
+            }
+          ]
+        },
+        "toolTip": "Select 'existing' if the container image is already present in the target registry. Choose 'import' to copy the image from a different registry during deployment.",
+        "visible": false
+      },
+      {
+        "name": "sourceAcrName",
+        "type": "Microsoft.Common.TextBox",
+        "label": "Source ACR Name",
+        "toolTip": "Name of the source Azure Container Registry (without .azurecr.io) from which to import the image",
+        "constraints": {
+          "required": "[equals(basics('imageSourceType'), 'import')]",
+          "validations": [
+            {
+              "regex": "^[a-z0-9]{5,50}$",
+              "message": "ACR name must be 5-50 lowercase alphanumeric characters."
+            }
+          ]
+        },
+        "visible": "[equals(basics('imageSourceType'), 'import')]",
+        "defaultValue": "zapperedgedocker"
+      },
+      {
+        "name": "sourceAcrResourceGroup",
+        "type": "Microsoft.Common.TextBox",
+        "label": "Source ACR Resource Group",
+        "toolTip": "Resource group of the source registry",
+        "constraints": {
+          "required": "[equals(basics('imageSourceType'), 'import')]",
+          "validations": [
+            {
+              "regex": "^[a-zA-Z0-9._()-]{1,90}$",
+              "message": "Resource group name: 1-90 characters, alphanumeric with ._()-"
+            }
+          ]
+        },
+        "visible": "[equals(basics('imageSourceType'), 'import')]",
+        "defaultValue": "rg_sample_customer"
+      },
+      {
+        "name": "sourceAcrSubscriptionId",
+        "type": "Microsoft.Common.TextBox",
+        "label": "Source ACR Subscription ID",
+        "toolTip": "Subscription ID that hosts the source registry",
+        "constraints": {
+          "required": "[equals(basics('imageSourceType'), 'import')]",
+          "validations": [
+            {
+              "regex": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$",
+              "message": "Must be a valid subscription GUID."
+            }
+          ]
+        },
+        "visible": "[equals(basics('imageSourceType'), 'import')]",
+        "defaultValue": "bfd0e547-2ce2-4f22-a358-7d91026a6a20"
+      },
+      {
+        "name": "sourceImageName",
+        "type": "Microsoft.Common.TextBox",
+        "label": "Source Image Name (repository)",
+        "toolTip": "Repository name of the source image",
+        "constraints": {
+          "required": "[equals(basics('imageSourceType'), 'import')]",
+          "validations": [
+            {
+              "regex": "^[a-z0-9._/-]{1,256}$",
+              "message": "Image name: 1-256 characters, lowercase alphanumeric with ._/-"
+            }
+          ]
+        },
+        "visible": "[equals(basics('imageSourceType'), 'import')]",
+        "defaultValue": "zapper-final"
+      },
+      {
+        "name": "sourceImageTag",
+        "type": "Microsoft.Common.TextBox",
+        "label": "Source Image Tag",
+        "toolTip": "Image tag on the source registry",
+        "constraints": {
+          "required": "[equals(basics('imageSourceType'), 'import')]",
+          "validations": [
+            {
+              "regex": "^[a-zA-Z0-9._-]{1,128}$",
+              "message": "Image tag: 1-128 characters, alphanumeric with ._-"
+            }
+          ]
+        },
+        "visible": "[equals(basics('imageSourceType'), 'import')]",
+        "defaultValue": "v519"
+      },
+      {
+        "name": "sourceAcrUsername",
+        "type": "Microsoft.Common.TextBox",
+        "label": "Source ACR Username (optional)",
+        "toolTip": "Username for the source registry if admin user or credentials are required. Leave blank if using identity‑based access.",
+        "constraints": {
+          "required": false,
+          "validations": [
+            {
+              "regex": "^[a-zA-Z0-9._-]{0,256}$",
+              "message": "Username: up to 256 characters, alphanumeric with ._- or empty"
+            }
+          ]
+        },
+        "visible": "[equals(basics('imageSourceType'), 'import')]",
+        "defaultValue": ""
+      },
+      {
+        "name": "sourceAcrPassword",
+        "type": "Microsoft.Common.TextBox",
+        "label": "Source ACR Password (optional)",
+        "toolTip": "Password for the source registry if admin user or credentials are required. Leave blank if using identity‑based access.",
+        "constraints": {
+          "required": false,
+          "validations": [
+            {
+              "regex": "^.{0,256}$",
+              "message": "Password: up to 256 characters or empty"
+            }
+          ]
+        },
+        "options": {
+          "isPassword": true
+        },
+        "visible": "[equals(basics('imageSourceType'), 'import')]",
+        "defaultValue": ""
+      },
+      {
+        "name": "prereqInfo",
+        "type": "Microsoft.Common.InfoBox",
+        "visible": true,
+        "options": {
+          "icon": "Info",
+          "text": "QUICK CHECK: Azure Resource Providers\n\nZapper needs 14 Azure resource providers to work its magic.\n\nREQUIRED PROVIDERS:\nMicrosoft.Solutions • Microsoft.Resources • Microsoft.KeyVault • Microsoft.DBforPostgreSQL • Microsoft.Web • Microsoft.ContainerRegistry • Microsoft.ManagedIdentity • Microsoft.Network • Microsoft.Compute • Microsoft.Storage • Microsoft.OperationalInsights • Microsoft.Insights • Microsoft.App • Microsoft.EventGrid\n\nNEED TO REGISTER ONE? Use Azure CLI:\naz provider register --namespace name --subscription sub-id\n\nFor more details, visit: https://zapperedge.com/preparing-subs-for-zapper-mft-deployment",
+          "uri": "https://zapperedge.com/preparing-subs-for-zapper-mft-deployment"
+        }
+      }
+    ],
+    "steps": [
+      {
+        "name": "configStep",
+        "label": "Configuration",
+        "elements": [
+          {
+            "name": "zapperEncryptionKey",
+            "type": "Microsoft.Common.TextBox",
+            "label": "ZAPPER_JWT_SECRET",
+            "toolTip": "Encryption key used by the app",
+            "constraints": {
+              "required": true,
+              "validations": [
+                {
+                  "regex": "^.{8,256}$",
+                  "message": "Encryption key: 8-256 characters required"
+                }
+              ]
+            },
+            "options": {
+              "isPassword": true
+            },
+            "defaultValue": "zapperEncryptionKey",
+            "visible": false
+          },
+          {
+            "name": "zapperInitialUser",
+            "type": "Microsoft.Common.TextBox",
+            "label": "User Email Id",
+            "toolTip": "Email address for the first admin user who will manage Zapper. This user gets full system access to create organizations, manage users, and configure storage. You can add more admin users and modify this email later from within the application.",
+            "constraints": {
+              "required": true,
+              "regex": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$",
+              "validationMessage": "Enter a valid email address."
+            }
+          },
+          {
+            "name": "zapperInitialSuperOrgName",
+            "type": "Microsoft.Common.TextBox",
+            "label": "User Org Name",
+            "toolTip": "Your organization name (e.g., 'Contoso Corp', 'IT Department'). This creates the initial organization where your first admin user will belong. You can rename this organization or create additional organizations later from within the application. Up to 32 characters: letters, digits, spaces, underscores or hyphens.",
+            "constraints": {
+              "required": true,
+              "regex": "^[A-Za-z0-9 _-]{1,32}$",
+              "validationMessage": "Use up to 32 chars: letters, digits, spaces, underscores or hyphens."
+            }
+          }
+        ]
+      },
+      {
+        "name": "databaseStep",
+        "label": "Database Configuration",
+        "elements": [
+          {
+            "name": "databaseInfo",
+            "type": "Microsoft.Common.InfoBox",
+            "visible": true,
+            "options": {
+              "icon": "Info",
+              "text": "DATABASE CONFIGURATIONS\n\nZapper stores user accounts, permissions, file metadata, and activity logs in PostgreSQL. You have two flexible options:\n\nOPTION 1: Use Existing Database.\n✅ Connect to your own PostgreSQL server (on-premises, Azure, AWS, etc.)\n✅  Requires providing a connection string: postgres://user:password@host:5432/dbname\n\nOPTION 2: Create New Database \n✅ Azure creates a managed PostgreSQL Flexible Server for you\n."
+            }
+          },
+          {
+            "name": "databaseOption",
+            "type": "Microsoft.Common.OptionsGroup",
+            "label": "Database Option",
+            "defaultValue": "existing",
+            "toolTip": "Choose whether to connect to an existing PostgreSQL database or create a new Azure-managed PostgreSQL Flexible Server.",
+            "constraints": {
+              "required": true,
+              "allowedValues": [
+                {
+                  "label": "Use existing PostgreSQL database",
+                  "value": "existing"
+                },
+                {
+                  "label": "Create new PostgreSQL database",
+                  "value": "new"
+                }
+              ]
+            }
+          },
+          {
+            "name": "databaseUrl",
+            "type": "Microsoft.Common.TextBox",
+            "label": "Existing PostgreSQL URL",
+            "toolTip": "Full connection string (postgres://user:password@host:5432/dbname)",
+            "constraints": {
+              "required": "[and(equals(steps('databaseStep').databaseOption, 'existing'), equals(steps('keyVaultStep').useKeyVaultAtRuntime, 'false'))]",
+              "validations": [
+                {
+                  "regex": "^(postgres://[^@\\s]+:[^@\\s]+@[^@\\s]+:[0-9]+/[^@\\s]+.*)?$",
+                  "message": "PostgreSQL URL format: postgres://user:password@host:port/database or empty"
+                }
+              ]
+            },
+            "defaultValue": "",
+            "visible": "[equals(steps('databaseStep').databaseOption, 'existing')]"
+          },
+          {
+            "name": "pgServerName",
+            "type": "Microsoft.Common.TextBox",
+            "label": "PostgreSQL Server Name",
+            "toolTip": "Name of the new PostgreSQL server",
+            "constraints": {
+              "required": true,
+              "validations": [
+                {
+                  "regex": "^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$",
+                  "message": "Server name: 3-63 characters, lowercase letters, numbers, and hyphens. Must start and end with letter/number."
+                }
+              ]
+            },
+            "defaultValue": "[concat(basics('webAppName'), '-db')]",
+            "visible": "[equals(steps('databaseStep').databaseOption, 'new')]"
+          },
+          {
+            "name": "pgDatabaseName",
+            "type": "Microsoft.Common.TextBox",
+            "label": "PostgreSQL Database Name",
+            "toolTip": "Name of the new database",
+            "constraints": {
+              "required": true,
+              "validations": [
+                {
+                  "regex": "^[a-zA-Z][a-zA-Z0-9_]{0,62}$",
+                  "message": "Database name: 1-63 characters, start with letter, alphanumeric with underscores."
+                }
+              ]
+            },
+            "defaultValue": "[concat('db', basics('webAppName'))]",
+            "visible": "[equals(steps('databaseStep').databaseOption, 'new')]"
+          },
+          {
+            "name": "dbAdminUser",
+            "type": "Microsoft.Common.TextBox",
+            "label": "PostgreSQL Admin Username",
+            "toolTip": "Administrator username for the new server",
+            "constraints": {
+              "required": true,
+              "validations": [
+                {
+                  "regex": "^[a-zA-Z][a-zA-Z0-9_]{0,62}$",
+                  "message": "Username: 1-63 characters, start with letter, alphanumeric with underscores."
+                }
+              ]
+            },
+            "defaultValue": "pgadmin",
+            "visible": "[equals(steps('databaseStep').databaseOption, 'new')]"
+          },
+          {
+            "name": "dbAdminPassword",
+            "type": "Microsoft.Common.PasswordBox",
+            "label": {
+              "password": "PostgreSQL Admin Password",
+              "confirmPassword": "Confirm Password"
+            },
+            "toolTip": "Administrator password for the new server. Must be at least 8 characters with uppercase, lowercase, and numbers.",
+            "constraints": {
+              "required": true,
+              "regex": "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d).{8,}$",
+              "validationMessage": "Password must be at least 8 characters and contain uppercase, lowercase, and numbers."
+            },
+            "options": {
+              "hideConfirmation": false
+            },
+            "visible": "[equals(steps('databaseStep').databaseOption, 'new')]"
+          }
+        ]
+      },
+      {
+        "name": "entraIdStep",
+        "label": "Entra ID Configuration",
+        "elements": [
+          {
+            "name": "entraIdInfo",
+            "type": "Microsoft.Common.InfoBox",
+            "visible": true,
+            "options": {
+              "icon": "Success",
+              "text": "ENTERPRISE SSO Integration\n\nZapper provides pre-configured Microsoft Entra ID credentials for instant deployment. After your app is live, we'll complete the authentication setup for you—no complex configuration needed!\n\nWHAT HAPPENS NEXT:\n1. Deploy your app using the pre-filled Entra ID settings below\n2. Once deployed, your Web app URL will be: https://[your-app-name].azurewebsites.net\n3. Email Web App  URL to support@zapperedge.com (Subject: \"Redirect URL for [your-app-name]\")\n4. Our team will configure the authentication within 12 hours\n5. You'll receive a confirmation email when ready\n\nFOR PRODUCTION- USE YOUR OWN ENTRA ID. Simply replace the pre-filled values below with your own Microsoft Entra ID  details.\n\nRESOURCES:\n• Zapper Configuration Guide: https://zapperedge.com/entra-configuration-guide\n• ",
+              "uri": "https://zapperedge.com/entra-configuration-guide"
+            }
+          },
+          {
+            "name": "zapperMsalClientId",
+            "type": "Microsoft.Common.TextBox",
+            "label": "MSAL Client ID",
+            "toolTip": "Azure AD application (client) ID for MSAL authentication",
+            "constraints": {
+              "required": true,
+              "validations": [
+                {
+                  "regex": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$",
+                  "message": "Must be a valid GUID format (e.g., 1c05ac21-a7ab-4815-84fb-41c2c6e277f8)."
+                }
+              ]
+            },
+            "defaultValue": "1c05ac21-a7ab-4815-84fb-41c2c6e277f8"
+          },
+          {
+            "name": "zapperMsalAuthority",
+            "type": "Microsoft.Common.TextBox",
+            "label": "MSAL Authority",
+            "toolTip": "Authority URL for MSAL authentication. Using Zapper's pre-configured values? Remember to email your app URL to support@zapperedge.com after deployment for redirect URI configuration.",
+            "constraints": {
+              "required": true,
+              "validations": [
+                {
+                  "regex": "^https://[a-zA-Z0-9.-]+(/[a-f0-9-]+)?$",
+                  "message": "Must be a valid authority URL starting with https://"
+                }
+              ]
+            },
+            "defaultValue": "https://zapperedgemft.ciamlogin.com/5045001d-bf72-4b9c-8c4d-31ab3c7549c3"
+          },
+          {
+            "name": "zapperMsalKnownAuthorities",
+            "type": "Microsoft.Common.TextBox",
+            "label": "MSAL Known Authorities",
+            "toolTip": "Comma-separated list of known login domains for MSAL",
+            "constraints": {
+              "required": true,
+              "validations": [
+                {
+                  "regex": "^[a-zA-Z0-9.-]+(,[a-zA-Z0-9.-]+)*$",
+                  "message": "Comma-separated domains: alphanumeric with dots and hyphens."
+                }
+              ]
+            },
+            "defaultValue": "zapperedgemft.ciamlogin.com"
+          }
+          ,
+          {
+            "name": "zapperDomainHint",
+            "type": "Microsoft.Common.TextBox",
+            "label": "MSAL Domain Hint (optional)",
+            "toolTip": "Optional domain hint for MSAL sign-in (e.g. contoso.onmicrosoft.com). Leave blank to omit.",
+            "constraints": {
+              "required": false,
+              "validations": [
+                {
+                  "regex": "^([a-zA-Z0-9.-]*)?$",
+                  "message": "Domain: alphanumeric with dots and hyphens, or empty."
+                }
+              ]
+            },
+            "defaultValue": ""
+          }
+        ]
+      },
+      {
+        "name": "keyVaultStep",
+        "label": "Key Vault Configuration",
+        "elements": [
+          {
+            "name": "keyVaultInfo",
+            "type": "Microsoft.Common.InfoBox",
+            "visible": true,
+            "options": {
+              "icon": "Info",
+              "text": "SECURE KEY MANAGEMENT WITH AZURE KEY VAULT\n\nKey Vault is Azure's secure vault for storing sensitive credentials like database passwords. Here's how Zapper uses it:\n\nHOW IT WORKS:\n1️⃣ Your database connection string (including password) is stored in Key Vault\n2️⃣ Zapper reads it securely at runtime using Managed Identity (no passwords in code!)\n3️⃣ Secrets are encrypted, audited, and rotatable without redeploying app\n\nRECOMMENDED: Yes (Key Vault)\n✅ Production-grade security—credentials never exposed in app settings\n✅ Easy secret rotation—update Key Vault, app auto-picks up changes\n✅ Compliance-ready—full audit trail of who accessed secrets when\n\nALTERNATIVE: No (Environment Variable)\n⚠️ Database URL stored as plain app setting (visible in Azure portal)\n⚠️ Good for testing/dev environments only\n"
+            }
+          },
+          {
+            "name": "useKeyVaultAtRuntime",
+            "type": "Microsoft.Common.OptionsGroup",
+            "label": "App reads DB URL from Key Vault at runtime?",
+            "defaultValue": "true",
+            "constraints": {
+              "required": true,
+              "allowedValues": [
+                {
+                  "label": "Yes (recommended)",
+                  "value": "true"
+                },
+                {
+                  "label": "No (fallback to environment variable)",
+                  "value": "false"
+                }
+              ]
+            },
+            "toolTip": "Choose 'No' for testing with an environment variable."
+          },
+          {
+            "name": "kvOption",
+            "type": "Microsoft.Common.OptionsGroup",
+            "label": "Key Vault Option",
+            "defaultValue": "new",
+            "toolTip": "Select whether to create a new Azure Key Vault for storing secrets or use an existing Key Vault.",
+            "constraints": {
+              "required": false,
+              "allowedValues": [
+                {
+                  "label": "Create New Key Vault",
+                  "value": "new"
+                },
+                {
+                  "label": "Use Existing Key Vault",
+                  "value": "existing"
+                }
+              ]
+            },
+            "visible": false
+          },
+          {
+            "name": "existingKeyVault",
+            "type": "Microsoft.Solutions.ResourceSelector",
+            "label": "Select Existing Key Vault",
+            "resourceType": "Microsoft.KeyVault/vaults",
+            "toolTip": "Choose an existing Key Vault from your subscription to store database connection strings and other secrets.",
+            "visible": false
+          },
+          {
+            "name": "existingKeyVaultId",
+            "type": "Microsoft.Common.TextBox",
+            "label": "Existing Key Vault Resource ID (auto-filled)",
+            "toolTip": "Auto-filled from the selector. Only paste if cross-subscription/tenant selection is not available.",
+            "constraints": {
+              "required": false,
+              "validations": [
+                {
+                  "regex": "^(/subscriptions/[a-f0-9-]+/resourceGroups/[a-zA-Z0-9._()-]+/providers/Microsoft\\.KeyVault/vaults/[a-zA-Z0-9-]+)?$",
+                  "message": "Must be a valid Azure Key Vault Resource ID or empty."
+                }
+              ]
+            },
+            "visible": false
+          },
+          {
+            "name": "existingKvTenantId",
+            "type": "Microsoft.Common.TextBox",
+            "label": "Key Vault Tenant ID (optional, only if different)",
+            "toolTip": "Provide the vault's tenant ID if it differs from this subscription's tenant.",
+            "constraints": {
+              "required": false,
+              "validations": [
+                {
+                  "regex": "^([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})?$",
+                  "message": "Must be a valid tenant GUID or empty."
+                }
+              ]
+            },
+            "visible": false
+          },
+          {
+            "name": "newKeyVaultName",
+            "type": "Microsoft.Common.TextBox",
+            "label": "New Key Vault Name",
+            "toolTip": "3\u201324 chars, lowercase letters, numbers or hyphens.",
+            "constraints": {
+              "required": "[equals(steps('keyVaultStep').useKeyVaultAtRuntime, 'true')]",
+              "regex": "^[a-z0-9-]{3,24}$",
+              "validationMessage": "Vault name must be 3\u201324 lowercase letters, numbers or hyphens."
+            },
+            "defaultValue": "[toLower(concat(substring(basics('webAppName'), 0, 6), '-kv-', substring(replace(replace(replace(replace(replace(utcNow(),'T',''),'-',''),':',''),'.',''),'Z',''), 0, 14)))]",
+            "visible": "[equals(steps('keyVaultStep').useKeyVaultAtRuntime, 'true')]"
+          },
+          {
+            "name": "dbSecretName",
+            "type": "Microsoft.Common.TextBox",
+            "label": "Secret Name for DB URL",
+            "toolTip": "Secret name inside Key Vault to store the connection string",
+            "constraints": {
+              "required": "[equals(steps('keyVaultStep').useKeyVaultAtRuntime, 'true')]",
+              "validations": [
+                {
+                  "regex": "^[a-zA-Z0-9-]{1,127}$",
+                  "message": "Secret name: 1-127 characters, alphanumeric with hyphens."
+                }
+              ]
+            },
+            "defaultValue": "DatabaseUrl",
+            "visible": "[equals(steps('keyVaultStep').useKeyVaultAtRuntime, 'true')]"
+          }
+        ]
+      },
+      {
+        "name": "aiAgentStep",
+        "label": "AI Agent Configuration",
+        "elements": [
+          {
+            "name": "aiAgentInfo",
+            "type": "Microsoft.Common.InfoBox",
+            "visible": true,
+            "options": {
+              "icon": "Info",
+              "text": "AI AGENT FEATURE - MANUAL FILE PROCESSING\n\nEnable AI Agent to process files on-demand in your storage accounts.\n\nHow it works:\n1. User selects file → Clicks \"Run AI Agent\" in Zapper UI\n2. Processor calls your AI service API → Sends file for processing\n3. Results saved immediately → Output stored in aiagent_results/ directory\n\nPerfect for manual file analysis, on-demand AI processing, and user-initiated operations.\nLeave disabled if you don't need AI processing capabilities."
+            }
+          },
+          {
+            "name": "enableAIAgent",
+            "type": "Microsoft.Common.OptionsGroup",
+            "label": "Enable AI Agent Feature?",
+            "defaultValue": "false",
+            "toolTip": "Enable AI-powered file processing capabilities. Users can select files and trigger on-demand AI processing through the Zapper UI.",
+            "constraints": {
+              "required": true,
+              "allowedValues": [
+                {
+                  "label": "No",
+                  "value": "false"
+                },
+                {
+                  "label": "Yes",
+                  "value": "true"
+                }
+              ]
+            }
+          },
+          {
+            "name": "aiAgentResultsDir",
+            "type": "Microsoft.Common.TextBox",
+            "label": "AI Agent Results Directory",
+            "toolTip": "Folder name where AI Agent processing results will be saved. Default: aiagent_results",
+            "constraints": {
+              "required": true,
+              "regex": "^[a-zA-Z0-9_-]+$",
+              "validationMessage": "Use only letters, numbers, underscores, or hyphens."
+            },
+            "defaultValue": "aiagent_results"
+          }
+        ]
+      }
+    ],
+    "outputs": {
+      "location": "[location()]",
+      "webAppName": "[basics('webAppName')]",
+      "appServicePlanSku": "[basics('appServicePlanSku')]",
+      "acrName": "[basics('acrName')]",
+      "acrResourceGroup": "[basics('acrResourceGroup')]",
+      "imageName": "[basics('imageName')]",
+      "imageTag": "[basics('imageTag')]",
+      "databaseOption": "[steps('databaseStep').databaseOption]",
+      "pgServerName": "[steps('databaseStep').pgServerName]",
+      "pgDatabaseName": "[steps('databaseStep').pgDatabaseName]",
+      "dbAdminUser": "[steps('databaseStep').dbAdminUser]",
+      "dbAdminPassword": "[steps('databaseStep').dbAdminPassword]",
+      "databaseUrl": "[if(not(equals(steps('databaseStep').databaseUrl, '')), steps('databaseStep').databaseUrl, 'none')]",
+      "zapperEncryptionKey": "[steps('configStep').zapperEncryptionKey]",
+      "zapperInitialUser": "[steps('configStep').zapperInitialUser]",
+      "zapperInitialSuperOrgName": "[steps('configStep').zapperInitialSuperOrgName]",
+      "useKeyVaultAtRuntime": "[equals(steps('keyVaultStep').useKeyVaultAtRuntime, 'true')]",
+      "kvOption": "[steps('keyVaultStep').kvOption]",
+      "useExistingKeyVault": false,
+      "existingKeyVaultId": "none",
+      "existingKvTenantId": "none",
+      "keyVaultName": "[if(equals(steps('keyVaultStep').useKeyVaultAtRuntime, 'true'), steps('keyVaultStep').newKeyVaultName, 'none')]",
+      "dbSecretName": "[if(equals(steps('keyVaultStep').useKeyVaultAtRuntime, 'true'), steps('keyVaultStep').dbSecretName, 'none')]",
+      "acaUseForDownloads": false,
+      "zipStrategyThresholdMb": "10",
+      "aiAgentResultsDir": "[steps('aiAgentStep').aiAgentResultsDir]",
+      "containerAppsEnvName": "[concat(basics('webAppName'), '-cae')]",
+      "zapperMsalClientId": "[steps('entraIdStep').zapperMsalClientId]",
+      "zapperMsalAuthority": "[steps('entraIdStep').zapperMsalAuthority]",
+      "zapperMsalKnownAuthorities": "[steps('entraIdStep').zapperMsalKnownAuthorities]",
+      "zapperDomainHint": "[steps('entraIdStep').zapperDomainHint]"
+      ,"acrPullIdentityResourceId": "[if(not(equals(basics('acrPullIdentityResourceId'), '')), basics('acrPullIdentityResourceId'), 'none')]"
+      ,"acrPullIdentityClientId": "[if(not(equals(basics('acrPullIdentityClientId'), '')), basics('acrPullIdentityClientId'), 'none')]"
+      ,"importImageFromExistingAcr": "[equals(basics('imageSourceType'), 'import')]"
+      ,"sourceAcrName": "[basics('sourceAcrName')]"
+      ,"sourceAcrResourceGroup": "[basics('sourceAcrResourceGroup')]"
+      ,"sourceAcrSubscriptionId": "[basics('sourceAcrSubscriptionId')]"
+      ,"sourceImageName": "[basics('sourceImageName')]"
+      ,"sourceImageTag": "[basics('sourceImageTag')]"
+      ,"sourceAcrUsername": "[if(not(equals(basics('sourceAcrUsername'), '')), basics('sourceAcrUsername'), 'none')]"
+      ,"sourceAcrPassword": "[if(not(equals(basics('sourceAcrPassword'), '')), basics('sourceAcrPassword'), 'none')]"
+      ,"enableAIAgent": "[equals(steps('aiAgentStep').enableAIAgent, 'true')]"
+      ,"enableGeoFencing": true
+    }
+  },
+  "outputs": {
+    "applicationName": "[concat(basics('webAppName'), '_app')]"
+  }
+}

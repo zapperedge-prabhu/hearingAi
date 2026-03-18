@@ -1,0 +1,37 @@
+{
+  "description": "Zapper Eval: parse question paper into structured questions",
+  "baseAnalyzerId": "prebuilt-document",
+  "models": {
+    "completion": "gpt-4.1-mini",
+    "embedding": "text-embedding-3-large"
+  },
+  "config": {
+    "enableOcr": true,
+    "enableLayout": true,
+    "returnDetails": true,
+    "estimateFieldSourceAndConfidence": true,
+    "disableContentFiltering": false,
+    "tableFormat": "markdown"
+  },
+  "fieldSchema": {
+    "name": "QuestionPaper",
+    "fields": {
+      "Subject": { "type": "string", "method": "extract" },
+      "Board": { "type": "string", "method": "extract" },
+      "TotalMaxMarks": { "type": "number", "method": "extract" },
+      "Questions": {
+        "type": "array",
+        "method": "extract",
+        "items": {
+          "type": "object",
+          "properties": {
+            "QuestionNum": { "type": "string", "method": "extract" },
+            "Prompt": { "type": "string", "method": "extract" },
+            "MaxMarks": { "type": "number", "method": "extract" },
+            "Type": { "type": "string", "method": "classify", "enum": ["mcq", "short", "long", "diagram", "mixed"] }
+          }
+        }
+      }
+    }
+  }
+}

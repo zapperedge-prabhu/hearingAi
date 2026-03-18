@@ -1,0 +1,1252 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "location": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().location]",
+      "metadata": {
+        "description": "Specifies the Azure region where the resources are deployed. Defaults to the current resource group's location."
+      }
+    },
+    "webAppName": {
+      "type": "string",
+      "metadata": {
+        "description": "Name of the Azure Web App. Must be 2–60 characters using lowercase letters, numbers and hyphens. Defaults to a generated value based on 'zappermft' and the current UTC timestamp."
+      }
+    },
+    "appServicePlanSku": {
+      "type": "string",
+      "defaultValue": "B1",
+      "metadata": {
+        "description": "SKU tier for the App Service Plan. Choose from Basic (B1–B3), Standard (S1–S3) or Premium v2/v3 (P1v2–P3v3)."
+      }
+    },
+    "acrName": {
+      "type": "string",
+      "defaultValue": "zapperedgedocker",
+      "metadata": {
+        "description": "Name of the Azure Container Registry (ACR), excluding the .azurecr.io suffix."
+      }
+    },
+    "acrResourceGroup": {
+      "type": "string",
+      "defaultValue": "rg_sample_customer",
+      "metadata": {
+        "description": "Name of the resource group that contains the ACR."
+      }
+    },
+    "acrSubscriptionId": {
+      "type": "string",
+      "defaultValue": "[subscription().subscriptionId]",
+      "metadata": {
+        "description": "Subscription ID of the ACR. Defaults to the current subscription."
+      }
+    },
+
+    "acrPublic": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Indicates whether the container registry is public (true) or private (false). When true, anonymous pulls are allowed."
+      }
+    },
+
+    "imageName": {
+      "type": "string",
+      "defaultValue": "zapper-final",
+      "metadata": {
+        "description": "Name of the container image repository."
+      }
+    },
+    "imageTag": {
+      "type": "string",
+      "defaultValue": "v519",
+      "metadata": {
+        "description": "Tag of the container image."
+      }
+    },
+    "databaseOption": {
+      "type": "string",
+      "defaultValue": "existing",
+      "allowedValues": [ "existing", "new" ],
+      "metadata": {
+        "description": "Specifies whether to use an existing PostgreSQL database ('existing') or create a new one ('new')."
+      }
+    },
+    "databaseUrl": {
+      "type": "secureString",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Full connection string for an existing PostgreSQL database (e.g., postgres://user:password@host:5432/dbname). Required when 'databaseOption' is 'existing' and Key Vault integration is disabled."
+      }
+    },
+    "zapperEncryptionKey": {
+      "type": "secureString",
+      "defaultValue": "[newGuid()]",
+      "metadata": {
+        "description": "Secret key used by the application for JWT encryption. Auto-generated GUID for security."
+      }
+    },
+    "pgServerName": {
+      "type": "string",
+      "defaultValue": "[if(endsWith(parameters('webAppName'), '-'), concat(parameters('webAppName'), 'db'), concat(parameters('webAppName'), '-db'))]",
+      "metadata": {
+        "description": "Name of the PostgreSQL server to create when 'databaseOption' is 'new'."
+      }
+    },
+    "pgDatabaseName": {
+      "type": "string",
+      "defaultValue": "[concat('db', parameters('webAppName'))]",
+      "metadata": {
+        "description": "Name of the PostgreSQL database to create when 'databaseOption' is 'new'."
+      }
+    },
+    "dbAdminUser": {
+      "type": "string",
+      "defaultValue": "pgadmin",
+      "metadata": {
+        "description": "Administrator username for the new PostgreSQL server when 'databaseOption' is 'new'."
+      }
+    },
+    "dbAdminPassword": {
+      "type": "secureString",
+      "defaultValue": "[newGuid()]",
+      "metadata": {
+        "description": "Administrator password for the new PostgreSQL server. Auto-generated GUID for security."
+      }
+    },
+    "assignAcrPull": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Indicates whether to assign the AcrPull role to the Web App so it can pull images from the ACR."
+      }
+    },
+    "restartNonce": {
+      "type": "string",
+      "defaultValue": "[utcNow('u')]",
+      "metadata": {
+        "description": "A unique timestamp used to force the Web App to restart on each deployment."
+      }
+    },
+    "zapperInitialUser": {
+      "type": "string",
+      "metadata": {
+        "description": "Email address of the initial admin user for the application. Must be a valid email format."
+      }
+    },
+    "zapperInitialSuperOrgName": {
+      "type": "string",
+      "metadata": {
+        "description": "Name of the initial organization. Up to 24 characters; may include letters, digits, spaces, underscores or hyphens."
+      }
+    },
+    "useExistingKeyVault": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Determines whether to use an existing Azure Key Vault. If true, provide 'existingKeyVaultId' and optionally 'existingKvTenantId'; otherwise a new vault may be created."
+      }
+    },
+    "existingKeyVaultId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Resource ID of an existing Key Vault to use for storing secrets."
+      }
+    },
+    "existingKvTenantId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Tenant ID associated with the existing Key Vault. Provide this only if the vault is in a different tenant."
+      }
+    },
+    "keyVaultName": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Name for a new Key Vault. Must be 3–24 characters using lowercase letters, numbers or hyphens. Required when not using an existing vault and Key Vault integration is enabled."
+      }
+    },
+    "dbSecretName": {
+      "type": "string",
+      "defaultValue": "DatabaseUrl",
+      "metadata": {
+        "description": "Name of the Key Vault secret that stores the database connection string."
+      }
+    },
+    "azureMapsSecretName": {
+      "type": "string",
+      "defaultValue": "AzureMapsKey",
+      "metadata": {
+        "description": "Name of the Key Vault secret that stores the Azure Maps API key for geo-fencing."
+      }
+    },
+    "useKeyVaultAtRuntime": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Indicates whether the Web App reads the database URL from Key Vault at runtime. Set to false to pass the connection string via an environment variable."
+      }
+    },
+    "kvOption": {
+      "type": "string",
+      "defaultValue": "new",
+      "allowedValues": [ "new", "existing" ],
+      "metadata": {
+        "description": "Specifies whether to create a new Key Vault ('new') or use an existing one ('existing')."
+      }
+    },
+    "blobDataRole": {
+      "type": "string",
+      "defaultValue": "Owner",
+      "allowedValues": [ "Reader", "Contributor", "Owner" ],
+      "metadata": {
+        "description": "Role assignment for access to blob storage used by the application. Allowed values are 'Reader', 'Contributor' and 'Owner'."
+      }
+    },
+    "acaUseForDownloads": {
+      "type": "bool",
+      "metadata": {
+        "description": "Specifies whether to use a separate Azure Container App for creating large ZIP downloads."
+      }
+    },
+    "zipStrategyThresholdMb": {
+      "type": "string",
+      "metadata": {
+        "description": "Threshold size in megabytes at which zipping is offloaded to the Container App. Must be a whole number."
+      }
+    },
+    "aiAgentResultsDir": {
+      "type": "string",
+      "defaultValue": "aiagent_results",
+      "metadata": {
+        "description": "Folder name where AI Agent processing results will be saved. Default: aiagent_results"
+      }
+    },
+    "containerAppName": {
+      "type": "string",
+      "defaultValue": "folder-zipper-aca",
+      "metadata": {
+        "description": "Name of the Container App used for zipping operations."
+      }
+    },
+    "containerAppTargetPort": {
+      "type": "int",
+      "defaultValue": 3000,
+      "metadata": {
+        "description": "Port exposed by the zipping Container App."
+      }
+    },
+    "folderZipperRepo": {
+      "type": "string",
+      "defaultValue": "folder-zipper",
+      "metadata": {
+        "description": "Repository name in the ACR that contains the folder-zipper container image."
+      }
+    },
+    "folderZipperTag": {
+      "type": "string",
+      "defaultValue": "latest",
+      "metadata": {
+        "description": "Tag for the folder-zipper container image."
+      }
+    },
+    "logAnalyticsWorkspaceName": {
+      "type": "string",
+      "defaultValue": "[concat(parameters('webAppName'), '-law')]",
+      "metadata": {
+        "description": "Name for the Log Analytics workspace associated with the Container App."
+      }
+    },
+    "containerAppsEnvName": {
+      "type": "string",
+      "defaultValue": "[concat(parameters('webAppName'), '-cae')]",
+      "metadata": {
+        "description": "Name for the Container Apps environment hosting the zipping application."
+      }
+    },
+    "acaPullIdentityName": {
+      "type": "string",
+      "defaultValue": "[concat(parameters('webAppName'), '-aca-pull-id')]",
+      "metadata": {
+        "description": "Name for the user-assigned managed identity used by the Container App to pull images."
+      }
+    },
+    "zapperMsalClientId": {
+      "type": "string",
+      "defaultValue": "1c05ac21-a7ab-4815-84fb-41c2c6e277f8",
+      "metadata": {
+        "description": "Azure AD application (client) ID used for MSAL authentication. Default value is Zapper's pre-configured Entra ID. IMPORTANT: When using default credentials, email your deployed app URL to support@zapperedge.com for redirect URI configuration (completed within 12 hours). For more details, please check https://zapperedge.com/entra-configuration-guide"
+      }
+    },
+    "zapperMsalAuthority": {
+      "type": "string",
+      "defaultValue": "https://zapperedgemft.ciamlogin.com/5045001d-bf72-4b9c-8c4d-31ab3c7549c3",
+      "metadata": {
+        "description": "Authority URL used for MSAL authentication. Default uses Zapper's pre-configured Entra ID tenant. For custom Entra ID, provide your own authority URL and configure redirect URIs in your app registration."
+      }
+    },
+    "zapperMsalKnownAuthorities": {
+      "type": "string",
+      "defaultValue": "zapperedgemft.ciamlogin.com",
+      "metadata": {
+        "description": "Comma-separated list of known authorities for MSAL authentication. Default corresponds to Zapper's managed Entra ID tenant."
+      }
+    },
+    "zapperDomainHint": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Optional domain hint used to streamline MSAL sign-in."
+      }
+    },
+    "acrPullIdentityClientId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Client ID of a user-assigned managed identity with AcrPull rights on the ACR. Provide this when using a user-assigned identity for cross-subscription image pulls."
+      }
+    },
+    "acrPullIdentityResourceId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Resource ID of a user-assigned managed identity with AcrPull rights on the ACR. Provide this when using a user-assigned identity for cross-subscription image pulls."
+      }
+    },
+    "importImageFromExistingAcr": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Indicates whether to import a container image from another ACR. When true, supply source ACR details."
+      }
+    },
+    "sourceAcrName": {
+      "type": "string",
+      "defaultValue": "zapperedgedocker",
+      "metadata": {
+        "description": "Name of the source Azure Container Registry when importing an image."
+      }
+    },
+    "sourceAcrResourceGroup": {
+      "type": "string",
+      "defaultValue": "rg_sample_customer",
+      "metadata": {
+        "description": "Resource group of the source ACR when importing an image."
+      }
+    },
+    "sourceAcrSubscriptionId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Subscription ID of the source ACR when importing an image. Optional."
+      }
+    },
+    "sourceImageName": {
+      "type": "string",
+      "defaultValue": "zapper-final",
+      "metadata": {
+        "description": "Repository name of the container image in the source ACR."
+      }
+    },
+    "sourceImageTag": {
+      "type": "string",
+      "defaultValue": "v519",
+      "metadata": {
+        "description": "Tag of the container image in the source ACR."
+      }
+    },
+    "sourceAcrUsername": {
+      "type": "secureString",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Username for authenticating to the source ACR when it is private. Optional."
+      }
+    },
+    "sourceAcrPassword": {
+      "type": "secureString",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Password for authenticating to the source ACR when it is private. Optional."
+      }
+    },
+    "enableAIAgent": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Enable AI Agent feature for automated file processing via HTTP endpoint."
+      }
+    },
+    "aiAgentProcessorRepo": {
+      "type": "string",
+      "defaultValue": "zapper-aiagp",
+      "metadata": {
+        "description": "Repository name in the ACR that contains the AI Agent processor container image."
+      }
+    },
+    "aiAgentProcessorTag": {
+      "type": "string",
+      "defaultValue": "latest",
+      "metadata": {
+        "description": "Tag for the AI Agent processor container image."
+      }
+    },
+    "enableSentinel": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Enable Microsoft Sentinel integration for SIEM capabilities. When enabled, security events will be streamed to Log Analytics and Sentinel for threat detection and compliance monitoring."
+      }
+    },
+    "sentinelRetentionDays": {
+      "type": "int",
+      "defaultValue": 90,
+      "minValue": 30,
+      "maxValue": 730,
+      "metadata": {
+        "description": "Number of days to retain security logs in Log Analytics workspace. Valid range: 30-730 days. Longer retention increases storage costs."
+      }
+    },
+    "enableGeoFencing": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Enable country-based geo-fencing for Partner Organizations. When enabled, an Azure Maps Gen2 account is created for IP geolocation services."
+      }
+    },
+    "azureMapsAccountName": {
+      "type": "string",
+      "defaultValue": "[concat(parameters('webAppName'), '-maps')]",
+      "metadata": {
+        "description": "Name of the Azure Maps account used for geo-fencing IP geolocation. Derived from webAppName."
+      }
+    }
+  },
+  "variables": {
+    "appServicePlanName": "[concat(parameters('webAppName'), '-plan')]",
+    "acrLoginServer": "[concat(parameters('acrName'), '.azurecr.io')]",
+    "linuxFxVersionValue": "[format('DOCKER|{0}/{1}:{2}', variables('acrLoginServer'), parameters('imageName'), parameters('imageTag'))]",
+    "zapperAzureResourceGroup": "[resourceGroup().name]",
+    "zapperAzureSubscriptionId": "[subscription().subscriptionId]",
+    "computedDatabaseUrl": "[if(equals(parameters('databaseOption'), 'existing'), parameters('databaseUrl'), format('postgres://{0}:{1}@{2}.postgres.database.azure.com:5432/{3}?sslmode=require', parameters('dbAdminUser'), parameters('dbAdminPassword'), parameters('pgServerName'), parameters('pgDatabaseName')))]",
+    "effectiveVaultName": "[if(parameters('useExistingKeyVault'), last(split(parameters('existingKeyVaultId'), '/')), parameters('keyVaultName'))]",
+    "vaultUri": "[concat('https://', variables('effectiveVaultName'), environment().suffixes.keyvaultDns, '/')]",
+    "blobDataRoleDefinitionId": "[if(equals(parameters('blobDataRole'),'Owner'),'b7e6dc6d-f1e8-4753-8033-0f276bb0955b', if(equals(parameters('blobDataRole'),'Contributor'),'ba92f5b4-2d11-453d-a403-e96b0029c9fe','2a2b9908-6ea1-4ae2-8e65-a410df84e7d1'))]",
+    "folderZipperImage": "[format('{0}/{1}:{2}', variables('acrLoginServer'), parameters('folderZipperRepo'), parameters('folderZipperTag'))]",
+    "acaPullIdentityId": "[if(equals(parameters('acrPullIdentityResourceId'), ''), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', parameters('acaPullIdentityName')), parameters('acrPullIdentityResourceId'))]",
+
+    "emptyArray": [],
+    "acaRegistriesPrivate": [
+      {
+        "server": "[variables('acrLoginServer')]",
+        "identity": "[variables('acaPullIdentityId')]"
+      }
+    ],
+    "acaRegistries": "[if(parameters('acrPublic'), variables('emptyArray'), variables('acaRegistriesPrivate'))]",
+    
+    "aiAgentProcessorAppName": "[concat(parameters('webAppName'), '-aiagp')]",
+    "aiAgentProcessorImage": "[format('{0}/{1}:{2}', variables('acrLoginServer'), parameters('aiAgentProcessorRepo'), parameters('aiAgentProcessorTag'))]",
+    "sentinelWorkspaceName": "[parameters('logAnalyticsWorkspaceName')]"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2021-04-01",
+      "name": "pid-93349462-dec2-4d28-91c9-98fe49cd5eb3-partnercenter",
+      "properties": {
+        "mode": "Incremental",
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "resources": []
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Resources/deploymentScripts",
+      "apiVersion": "2020-10-01",
+      "kind": "AzureCLI",
+      "name": "registerKeyVaultRP",
+      "location": "[parameters('location')]",
+      "properties": {
+        "azCliVersion": "2.73.0",
+        "scriptContent": "state=$(az provider show --namespace Microsoft.KeyVault --query registrationState -o tsv || echo NotRegistered); if [ \"$state\" != \"Registered\" ]; then az provider register --namespace Microsoft.KeyVault; fi; echo \"Microsoft.KeyVault RP state: $state\"",
+        "cleanupPreference": "OnSuccess",
+        "retentionInterval": "P1D"
+      }
+    },
+
+    {
+      "condition": "[parameters('importImageFromExistingAcr')]",
+      "type": "Microsoft.Resources/deploymentScripts",
+      "apiVersion": "2020-10-01",
+      "kind": "AzureCLI",
+      "name": "importImageFromSourceRegistry",
+      "location": "[parameters('location')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deploymentScripts','registerKeyVaultRP')]"
+      ],
+      "identity": "[if(equals(parameters('acrPullIdentityResourceId'), ''), json('{\"type\":\"SystemAssigned\"}'), json(concat('{\"type\":\"UserAssigned\",\"userAssignedIdentities\":{\"', parameters('acrPullIdentityResourceId'), '\":{}}}')))]",
+      "properties": {
+        "azCliVersion": "2.73.0",
+        "timeout": "PT20M",
+        "cleanupPreference": "OnSuccess",
+        "retentionInterval": "P1D",
+        "arguments": "[format('--targetAcr {0} --targetImageName {1} --targetImageTag {2} --sourceAcr {3} --sourceImageName {4} --sourceImageTag {5} --sourceSubscription {6} --sourceResourceGroup {7} --sourceUsername {8} --sourcePassword {9} --targetSubscription {10}', parameters('acrName'), parameters('imageName'), parameters('imageTag'), parameters('sourceAcrName'), parameters('sourceImageName'), parameters('sourceImageTag'), parameters('sourceAcrSubscriptionId'), parameters('sourceAcrResourceGroup'), parameters('sourceAcrUsername'), parameters('sourceAcrPassword'), parameters('acrSubscriptionId'))]",
+        "scriptContent": "set -euo pipefail\n# Parse named arguments\nwhile [ $# -gt 0 ]; do case \"$1\" in \n--targetAcr) TARGET_ACR=\"$2\"; shift 2;; \n--targetImageName) TARGET_IMAGE_NAME=\"$2\"; shift 2;; \n--targetImageTag) TARGET_IMAGE_TAG=\"$2\"; shift 2;; \n--sourceAcr) SOURCE_ACR=\"$2\"; shift 2;; \n--sourceImageName) SOURCE_IMAGE_NAME=\"$2\"; shift 2;; \n--sourceImageTag) SOURCE_IMAGE_TAG=\"$2\"; shift 2;; \n--sourceSubscription) SOURCE_SUB=\"$2\"; shift 2;; \n--sourceResourceGroup) SOURCE_RG=\"$2\"; shift 2;; \n--sourceUsername) SOURCE_USERNAME=\"$2\"; shift 2;; \n--sourcePassword) SOURCE_PASSWORD=\"$2\"; shift 2;; \n--targetSubscription) TARGET_SUB=\"$2\"; shift 2;; \n*) shift ;; esac; done\n# Login with the assigned identity\naz login --identity >/dev/null 2>&1\n# Build the import command including the target subscription\nIMPORT_CMD=(az acr import --subscription \"$TARGET_SUB\" --name \"$TARGET_ACR\" --source \"${SOURCE_ACR}.azurecr.io/${SOURCE_IMAGE_NAME}:${SOURCE_IMAGE_TAG}\" --image \"${TARGET_IMAGE_NAME}:${TARGET_IMAGE_TAG}\" --source-subscription \"$SOURCE_SUB\")\nif [ -n \"$SOURCE_RG\" ]; then\n  IMPORT_CMD+=(--source-resource-group \"$SOURCE_RG\")\nfi\nif [ -n \"$SOURCE_USERNAME\" ] && [ -n \"$SOURCE_PASSWORD\" ]; then\n  IMPORT_CMD+=(--username \"$SOURCE_USERNAME\" --password \"$SOURCE_PASSWORD\")\nfi\n# Execute the import\n\"${IMPORT_CMD[@]}\"\n",
+        "forceUpdateTag": "[parameters('restartNonce')]"
+      }
+    },
+
+    {
+      "condition": "[and(parameters('useKeyVaultAtRuntime'), parameters('useExistingKeyVault'))]",
+      "type": "Microsoft.Resources/deploymentScripts",
+      "apiVersion": "2020-10-01",
+      "kind": "AzureCLI",
+      "name": "detectKvModel",
+      "location": "[parameters('location')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deploymentScripts', 'registerKeyVaultRP')]"
+      ],
+      "properties": {
+        "azCliVersion": "2.73.0",
+        "timeout": "PT15M",
+        "arguments": "[format('--kvId {0}', parameters('existingKeyVaultId'))]",
+        "scriptContent": "set -euo pipefail\nKV_ID=\"$(echo $1 | sed 's/^--kvId //')\"\nIS_RBAC=$(az resource show --ids \"$KV_ID\" --api-version 2023-07-01 --query \"properties.enableRbacAuthorization\" -o tsv 2>/dev/null || echo \"\")\nif [ \"$IS_RBAC\" = \"true\" ]; then echo '{\"isRbac\":\"true\"}' > $AZ_SCRIPTS_OUTPUT_PATH; else echo '{\"isRbac\":\"false\"}' > $AZ_SCRIPTS_OUTPUT_PATH; fi",
+        "cleanupPreference": "OnSuccess",
+        "retentionInterval": "P1D"
+      }
+    },
+
+    {
+      "condition": "[equals(parameters('databaseOption'), 'new')]",
+      "type": "Microsoft.DBforPostgreSQL/flexibleServers",
+      "apiVersion": "2022-12-01",
+      "name": "[parameters('pgServerName')]",
+      "location": "[parameters('location')]",
+      "sku": { "name": "Standard_B1ms", "tier": "Burstable" },
+      "properties": {
+        "administratorLogin": "[parameters('dbAdminUser')]",
+        "administratorLoginPassword": "[parameters('dbAdminPassword')]",
+        "version": "14",
+        "storage": { "storageSizeGB": 32 },
+        "network": { "publicNetworkAccess": "Enabled" }
+      }
+    },
+    {
+      "condition": "[equals(parameters('databaseOption'), 'new')]",
+      "type": "Microsoft.DBforPostgreSQL/flexibleServers/databases",
+      "apiVersion": "2022-12-01",
+      "name": "[concat(parameters('pgServerName'), '/', parameters('pgDatabaseName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.DBforPostgreSQL/flexibleServers', parameters('pgServerName'))]"
+      ],
+      "properties": { "charset": "UTF8", "collation": "en_US.utf8" }
+    },
+    {
+      "condition": "[equals(parameters('databaseOption'), 'new')]",
+      "type": "Microsoft.DBforPostgreSQL/flexibleServers/firewallRules",
+      "apiVersion": "2022-12-01",
+      "name": "[concat(parameters('pgServerName'), '/AllowAllAzureIps')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.DBforPostgreSQL/flexibleServers', parameters('pgServerName'))]"
+      ],
+      "properties": { "startIpAddress": "0.0.0.0", "endIpAddress": "0.0.0.0" }
+    },
+
+    {
+      "type": "Microsoft.Web/serverfarms",
+      "apiVersion": "2022-03-01",
+      "name": "[variables('appServicePlanName')]",
+      "location": "[parameters('location')]",
+      "sku": { "name": "[parameters('appServicePlanSku')]", "capacity": 1 },
+      "kind": "linux",
+      "properties": { "reserved": true }
+    },
+    {
+      "type": "Microsoft.Web/sites",
+      "apiVersion": "2022-03-01",
+      "name": "[parameters('webAppName')]",
+      "location": "[parameters('location')]",
+      "kind": "app,linux,container",
+      "identity": "[if(equals(parameters('acrPullIdentityResourceId'), ''), json('{\"type\":\"SystemAssigned\"}'), json(concat('{\"type\":\"SystemAssigned,UserAssigned\",\"userAssignedIdentities\":{\"', parameters('acrPullIdentityResourceId'), '\":{}}}')) )]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/serverfarms', variables('appServicePlanName'))]"
+      ],
+      "properties": {
+        "httpsOnly": true,
+        "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('appServicePlanName'))]",
+        "siteConfig": {
+          "linuxFxVersion": "[variables('linuxFxVersionValue')]",
+          "acrUseManagedIdentityCreds": "[if(parameters('acrPublic'), json('false'), json('true'))]",
+          "alwaysOn": true,
+          "acrUserManagedIdentityID": "[if(parameters('acrPublic'), json('null'), if(equals(parameters('acrPullIdentityClientId'), ''), if(equals(parameters('acrPullIdentityResourceId'), ''), json('null'), parameters('acrPullIdentityResourceId')), parameters('acrPullIdentityClientId')))]"
+        }
+      }
+    },
+
+    {
+      "condition": "[and(parameters('assignAcrPull'), equals(parameters('acrPullIdentityResourceId'), ''), not(parameters('acrPublic')))]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2021-04-01",
+      "name": "assign-acr-pull-at-acr-scope",
+      "subscriptionId": "[parameters('acrSubscriptionId')]",
+      "resourceGroup": "[parameters('acrResourceGroup')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('webAppName'))]"
+      ],
+      "properties": {
+        "expressionEvaluationOptions": { "scope": "inner" },
+        "mode": "Incremental",
+        "parameters": {
+          "principalId": {
+            "value": "[reference(resourceId('Microsoft.Web/sites', parameters('webAppName')), '2022-03-01', 'Full').identity.principalId]"
+          },
+          "acrName": { "value": "[parameters('acrName')]" }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "parameters": {
+            "principalId": { "type": "string" },
+            "acrName": { "type": "string" }
+          },
+          "variables": {
+            "acrId": "[resourceId('Microsoft.ContainerRegistry/registries', parameters('acrName'))]"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "name": "[guid(variables('acrId'), parameters('principalId'), 'acr-pull')]",
+              "scope": "[variables('acrId')]",
+              "properties": {
+                "roleDefinitionId": "/providers/Microsoft.Authorization/roleDefinitions/7f951dda-4ed3-4680-a7ca-43fe172d538d",
+                "principalId": "[parameters('principalId')]",
+                "principalType": "ServicePrincipal"
+              }
+            }
+          ]
+        }
+      }
+    },
+
+    {
+      "type": "Microsoft.KeyVault/vaults",
+      "condition": "[and(parameters('useKeyVaultAtRuntime'), not(parameters('useExistingKeyVault')))]",
+      "apiVersion": "2023-07-01",
+      "name": "[parameters('keyVaultName')]",
+      "location": "[parameters('location')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deploymentScripts','registerKeyVaultRP')]",
+        "[resourceId('Microsoft.Web/sites', parameters('webAppName'))]"
+      ],
+      "properties": {
+        "tenantId": "[subscription().tenantId]",
+        "sku": { "family": "A", "name": "standard" },
+        "enabledForDeployment": false,
+        "enabledForTemplateDeployment": true,
+        "enabledForDiskEncryption": false,
+        "publicNetworkAccess": "Enabled",
+        "softDeleteRetentionInDays": 90,
+        "enablePurgeProtection": true,
+        "accessPolicies": [
+          {
+            "tenantId": "[subscription().tenantId]",
+            "objectId": "[reference(resourceId('Microsoft.Web/sites', parameters('webAppName')), '2022-03-01', 'Full').identity.principalId]",
+            "permissions": {
+              "secrets": [ "get", "list", "set", "delete" ],
+              "keys": [ "get", "list", "create", "update", "import" ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "condition": "[and(parameters('useKeyVaultAtRuntime'), not(parameters('useExistingKeyVault')), equals(parameters('databaseOption'), 'new'))]",
+      "type": "Microsoft.KeyVault/vaults/secrets",
+      "apiVersion": "2023-07-01",
+      "name": "[format('{0}/{1}', parameters('keyVaultName'), parameters('dbSecretName'))]",
+      "properties": { "value": "[variables('computedDatabaseUrl')]" },
+      "dependsOn": [
+        "[resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName'))]",
+        "[resourceId('Microsoft.DBforPostgreSQL/flexibleServers/databases', parameters('pgServerName'), parameters('pgDatabaseName'))]"
+      ]
+    },
+    {
+      "condition": "[and(parameters('useKeyVaultAtRuntime'), not(parameters('useExistingKeyVault')), equals(parameters('databaseOption'), 'existing'))]",
+      "type": "Microsoft.KeyVault/vaults/secrets",
+      "apiVersion": "2023-07-01",
+      "name": "[format('{0}/{1}', parameters('keyVaultName'), parameters('dbSecretName'))]",
+      "properties": { "value": "[variables('computedDatabaseUrl')]" },
+      "dependsOn": [
+        "[resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName'))]"
+      ]
+    },
+    {
+      "condition": "[and(parameters('enableGeoFencing'), parameters('useKeyVaultAtRuntime'), not(parameters('useExistingKeyVault')))]",
+      "type": "Microsoft.KeyVault/vaults/secrets",
+      "apiVersion": "2023-07-01",
+      "name": "[format('{0}/{1}', parameters('keyVaultName'), parameters('azureMapsSecretName'))]",
+      "properties": { "value": "[listKeys(resourceId('Microsoft.Maps/accounts', parameters('azureMapsAccountName')), '2023-06-01').primaryKey]" },
+      "dependsOn": [
+        "[resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName'))]",
+        "[resourceId('Microsoft.Maps/accounts', parameters('azureMapsAccountName'))]"
+      ]
+    },
+
+    {
+      "condition": "[and(or(parameters('enableAIAgent'), parameters('acaUseForDownloads')), equals(parameters('acrPullIdentityResourceId'), ''), not(parameters('acrPublic')))]",
+      "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+      "apiVersion": "2023-01-31",
+      "name": "[parameters('acaPullIdentityName')]",
+      "location": "[parameters('location')]"
+    },
+    {
+      "condition": "[and(or(parameters('enableAIAgent'), parameters('acaUseForDownloads')), equals(parameters('acrPullIdentityResourceId'), ''), not(parameters('acrPublic')))]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2021-04-01",
+      "name": "assign-acr-pull-to-aca-uami",
+      "subscriptionId": "[parameters('acrSubscriptionId')]",
+      "resourceGroup": "[parameters('acrResourceGroup')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', parameters('acaPullIdentityName'))]"
+      ],
+      "properties": {
+        "expressionEvaluationOptions": { "scope": "inner" },
+        "mode": "Incremental",
+        "parameters": {
+          "principalId": {
+            "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', parameters('acaPullIdentityName')), '2023-01-31').principalId]"
+          },
+          "acrName": { "value": "[parameters('acrName')]" }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "parameters": {
+            "principalId": { "type": "string" },
+            "acrName": { "type": "string" }
+          },
+          "variables": {
+            "acrId": "[resourceId('Microsoft.ContainerRegistry/registries', parameters('acrName'))]"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "name": "[guid(variables('acrId'), parameters('principalId'), 'aca-uami-acr-pull')]",
+              "scope": "[variables('acrId')]",
+              "properties": {
+                "roleDefinitionId": "/providers/Microsoft.Authorization/roleDefinitions/7f951dda-4ed3-4680-a7ca-43fe172d538d",
+                "principalId": "[parameters('principalId')]",
+                "principalType": "ServicePrincipal"
+              }
+            }
+          ]
+        }
+      }
+    },
+
+    {
+      "condition": "[or(or(parameters('enableAIAgent'), parameters('acaUseForDownloads')), parameters('enableSentinel'))]",
+      "type": "Microsoft.OperationalInsights/workspaces",
+      "apiVersion": "2022-10-01",
+      "name": "[parameters('logAnalyticsWorkspaceName')]",
+      "location": "[parameters('location')]",
+      "properties": { 
+        "retentionInDays": "[if(parameters('enableSentinel'), parameters('sentinelRetentionDays'), 30)]",
+        "features": { "legacy": 0 },
+        "sku": { "name": "PerGB2018" }
+      }
+    },
+    {
+      "comments": "Legacy SecurityInsights solution - kept for backward compatibility",
+      "condition": "[parameters('enableSentinel')]",
+      "type": "Microsoft.OperationsManagement/solutions",
+      "apiVersion": "2015-11-01-preview",
+      "name": "[concat('SecurityInsights(', parameters('logAnalyticsWorkspaceName'), ')')]",
+      "location": "[parameters('location')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('logAnalyticsWorkspaceName'))]"
+      ],
+      "properties": {
+        "workspaceResourceId": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('logAnalyticsWorkspaceName'))]"
+      },
+      "plan": {
+        "name": "[concat('SecurityInsights(', parameters('logAnalyticsWorkspaceName'), ')')]",
+        "product": "OMSGallery/SecurityInsights",
+        "publisher": "Microsoft",
+        "promotionCode": ""
+      }
+    },
+    {
+      "comments": "Modern Sentinel onboarding state - ensures workspace is properly onboarded to Sentinel (API 2024-03-01)",
+      "condition": "[parameters('enableSentinel')]",
+      "type": "Microsoft.OperationalInsights/workspaces/providers/onboardingStates",
+      "apiVersion": "2024-03-01",
+      "name": "[concat(parameters('logAnalyticsWorkspaceName'), '/Microsoft.SecurityInsights/default')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('logAnalyticsWorkspaceName'))]",
+        "[resourceId('Microsoft.OperationsManagement/solutions', concat('SecurityInsights(', parameters('logAnalyticsWorkspaceName'), ')'))]"
+      ],
+      "properties": {
+        "customerManagedKey": false
+      }
+    },
+    {
+      "comments": "Azure Maps Gen2 account for geo-fencing IP geolocation services",
+      "condition": "[parameters('enableGeoFencing')]",
+      "type": "Microsoft.Maps/accounts",
+      "apiVersion": "2023-06-01",
+      "name": "[parameters('azureMapsAccountName')]",
+      "location": "global",
+      "sku": {
+        "name": "G2"
+      },
+      "kind": "Gen2",
+      "properties": {
+        "disableLocalAuth": false
+      }
+    },
+    {
+      "condition": "[or(parameters('enableAIAgent'), parameters('acaUseForDownloads'))]",
+      "type": "Microsoft.App/managedEnvironments",
+      "apiVersion": "2024-03-01",
+      "name": "[parameters('containerAppsEnvName')]",
+      "location": "[parameters('location')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('logAnalyticsWorkspaceName'))]"
+      ],
+      "properties": {
+        "appLogsConfiguration": {
+          "destination": "log-analytics",
+          "logAnalyticsConfiguration": {
+            "customerId": "[reference(resourceId('Microsoft.OperationalInsights/workspaces', parameters('logAnalyticsWorkspaceName')), '2022-10-01').customerId]",
+            "sharedKey": "[listKeys(resourceId('Microsoft.OperationalInsights/workspaces', parameters('logAnalyticsWorkspaceName')), '2022-10-01').primarySharedKey]"
+          }
+        }
+      }
+    },
+    {
+      "condition": "[parameters('acaUseForDownloads')]",
+      "type": "Microsoft.App/containerApps",
+      "apiVersion": "2024-03-01",
+      "name": "[parameters('containerAppName')]",
+      "location": "[parameters('location')]",
+      "identity": "[if(parameters('acrPublic'), json('{\"type\":\"SystemAssigned\"}'), json(concat('{\"type\":\"SystemAssigned, UserAssigned\",\"userAssignedIdentities\":{\"', variables('acaPullIdentityId'), '\":{}}}')))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.App/managedEnvironments', parameters('containerAppsEnvName'))]",
+        "[resourceId(parameters('acrSubscriptionId'), parameters('acrResourceGroup'), 'Microsoft.Resources/deployments', 'assign-acr-pull-to-aca-uami')]"
+      ],
+      "properties": {
+        "managedEnvironmentId": "[resourceId('Microsoft.App/managedEnvironments', parameters('containerAppsEnvName'))]",
+        "configuration": {
+          "ingress": {
+            "external": true,
+            "transport": "auto",
+            "targetPort": "[parameters('containerAppTargetPort')]",
+            "allowInsecure": false
+          },
+          "registries": "[variables('acaRegistries')]"
+        },
+        "template": {
+          "containers": [
+            {
+              "name": "folder-zipper",
+              "image": "[variables('folderZipperImage')]",
+              "resources": { "cpu": 0.5, "memory": "1Gi" },
+              "env": [
+                { "name": "ZAPPER_USE_ACA_FOR_DOWNLOADS", "value": "[toLower(string(parameters('acaUseForDownloads')))]" },
+                { "name": "PORT", "value": "[string(parameters('containerAppTargetPort'))]" },
+                { "name": "ZAPPER_ZIP_STRATEGY_THRESHOLD_MB", "value": "[parameters('zipStrategyThresholdMb')]" }
+              ]
+            }
+          ],
+          "scale": { "minReplicas": 0, "maxReplicas": 4 }
+        }
+      }
+    },
+
+    {
+      "type": "Microsoft.Web/sites/config",
+      "apiVersion": "2022-03-01",
+      "name": "[concat(parameters('webAppName'), '/logs')]",
+      "location": "[parameters('location')]",
+      "dependsOn": [ "[resourceId('Microsoft.Web/sites', parameters('webAppName'))]" ],
+      "properties": {
+        "applicationLogs": { "fileSystem": { "level": "Information" } },
+        "httpLogs": { "fileSystem": { "enabled": true, "retentionInDays": 7, "retentionInMb": 50 } }
+      }
+    },
+    {
+      "type": "Microsoft.Web/sites/config",
+      "apiVersion": "2022-03-01",
+      "name": "[concat(parameters('webAppName'), '/appsettings')]",
+      "location": "[parameters('location')]",
+      "dependsOn": [ "[resourceId('Microsoft.Web/sites', parameters('webAppName'))]" ],
+      "properties": {
+        "WEBSITES_PORT": "5000",
+        "WEBSITES_ENABLE_APP_SERVICE_STORAGE": "false",
+        "DATABASE_URL": "[if(not(parameters('useKeyVaultAtRuntime')), variables('computedDatabaseUrl'), '')]",
+        "ZAPPER_JWT_SECRET": "[parameters('zapperEncryptionKey')]",
+        "ZAPPER_AZURE_USE_CLIENT_SECRET": "false",
+        "ZAPPER_AUTO_CREATE_DB_TABLES": "true",
+        "ZAPPER_AZURE_SAS_TIMEOUT": "0",
+        "ZAPPER_AZURE_RESOURCE_GROUP": "[variables('zapperAzureResourceGroup')]",
+        "ZAPPER_AZURE_SUBSCRIPTION_ID": "[variables('zapperAzureSubscriptionId')]",
+        "PORT": "5000",
+        "NODE_ENV": "production",
+        "ZAPPER_SSO_FEATURE": "1",
+        "ZAPPER_FILE_UPLOAD_MODE": "sas",
+        "ZAPPER_SAS_TIMEOUT_MINUTES": "120",
+        "ZAPPER_PREVIEW_SAS_TIME":"120",
+        "ZAPPER_CHUNK_SIZE_MB": "8",
+        "ZAPPER_UPLOAD_CONCURRENCY": "10",
+        "ZAPPER_MAX_RETRIES": "3",
+        "ZAPPER_MAX_FILES_COUNT": "1000",
+        "ZAPPER_READ_PGP_MY_KB" :"true",
+        "ZAPPER_CU_RESULTS_DIR" :"my_cu_analysis",
+        "ZAPPER_MAX_UPLOAD_SIZE": "15",
+        "ZAPPER_USE_IP_FOR_SAS" : "true",
+        "ZAPPER_USE_ACA_FOR_DOWNLOADS": "[toLower(string(parameters('acaUseForDownloads')))]",
+        "ZAPPER_ZIP_STRATEGY_THRESHOLD_MB": "[parameters('zipStrategyThresholdMb')]",
+        "ZAPPER_ACA_ENVIRONMENT": "[parameters('containerAppsEnvName')]",
+        "RESTART_TRIGGER": "[parameters('restartNonce')]",
+        "ZAPPER_INITIAL_USER": "[parameters('zapperInitialUser')]",
+        "ZAPPER_INITIAL_SUPER_ORG_NAME": "[parameters('zapperInitialSuperOrgName')]",
+        "ZAPPER_USE_KEYVAULT": "[toLower(string(parameters('useKeyVaultAtRuntime')))]",
+        "KEY_VAULT_URL": "[if(parameters('useKeyVaultAtRuntime'), variables('vaultUri'), '')]",
+        "DB_SECRET_NAME": "[if(parameters('useKeyVaultAtRuntime'), parameters('dbSecretName'), '')]",
+        "ZAPPER_MSAL_CLIENT_ID": "[parameters('zapperMsalClientId')]",
+        "ZAPPER_MSAL_AUTHORITY": "[parameters('zapperMsalAuthority')]",
+        "ZAPPER_MSAL_KNOWN_AUTHORITIES": "[parameters('zapperMsalKnownAuthorities')]",
+        "ZAPPER_MSAL_CACHE_LOCATION": "sessionStorage",
+        "ZAPPER_MSAL_STORE_AUTHSTATE_COOKIE": "false",
+        "ZAPPER_MSAL_LOGLEVEL": "Error",
+        "ZAPPER_DOMAIN_HINT": "[parameters('zapperDomainHint')]",
+        "ZAPPER_HNS_FLAG":"TRUE",
+        "ZAPPER_LOG_LOGIN":"false",
+        "ZAPPER_LOG_LOGOUT":"true",
+        "ZAPPER_LOG_LOGIN_FAILED":"true",
+
+        "ZAPPER_LOG_RENAME_FILE": "true",
+        "ZAPPER_LOG_RENAME_DIRECTORY": "true",
+        "ZAPPER_LOG_SEARCH_FILES": "true",
+
+        "ZAPPER_LOG_RUN_CONTENT_ANALYSIS": "true",
+        "ZAPPER_LOG_SAVE_CU_RESULT": "true",
+        "ZAPPER_LOG_DELETE_CU_RESULT": "true",
+        "ZAPPER_LOG_VIEW_CU_RESULTS": "true",
+
+        "ZAPPER_LOG_CREATE_FOUNDRY_RESOURCE": "true",
+        "ZAPPER_LOG_UPDATE_FOUNDRY_RESOURCE": "true",
+        "ZAPPER_LOG_DELETE_FOUNDRY_RESOURCE": "true",
+        "ZAPPER_LOG_VIEW_FOUNDRY_RESOURCES": "true",
+
+        "ZAPPER_LOG_CREATE_FOUNDRY_RESOURCE_SET": "true",
+        "ZAPPER_LOG_UPDATE_FOUNDRY_RESOURCE_SET": "true",
+        "ZAPPER_LOG_DELETE_FOUNDRY_RESOURCE_SET": "true",
+        "ZAPPER_LOG_VIEW_FOUNDRY_RESOURCE_SETS": "true",
+
+        "ZAPPER_LOG_CREATE_FOUNDRY_HUB": "true",
+        "ZAPPER_LOG_DELETE_FOUNDRY_HUB": "true",
+        "ZAPPER_LOG_CREATE_FOUNDRY_PROJECT": "true",
+        "ZAPPER_LOG_DELETE_FOUNDRY_PROJECT": "true",
+        "ZAPPER_LOG_CREATE_FOUNDRY_DEPLOYMENT": "true",
+        "ZAPPER_LOG_DELETE_FOUNDRY_DEPLOYMENT": "true",
+
+        "ZAPPER_LOG_CREATE_FOUNDRY_AGENT": "true",
+        "ZAPPER_LOG_UPDATE_FOUNDRY_AGENT": "true",
+        "ZAPPER_LOG_DELETE_FOUNDRY_AGENT": "true",
+
+        "ZAPPER_LOG_CREATE_FOUNDRY_VECTOR_STORE": "true",
+        "ZAPPER_LOG_DELETE_FOUNDRY_VECTOR_STORE": "true",
+
+        "ZAPPER_LOG_FOUNDRY_CHAT": "true",
+        "ZAPPER_LOG_FOUNDRY_FILE_IMPORT": "true",
+
+
+        "ZAPPER_LOG_UPLOAD_FILE":"true",
+        "ZAPPER_LOG_DOWNLOAD_FILE":"true",
+        "ZAPPER_LOG_DELETE_FILE":"true",
+        "ZAPPER_LOG_CREATE_DIRECTORY":"true",
+        "ZAPPER_LOG_DELETE_DIRECTORY":"true",
+        "ZAPPER_LOG_DOWNLOAD_DIRECTORY":"true",
+        "ZAPPER_LOG_VIEW_FILES":"false",
+        "ZAPPER_LOG_PREVIEW_FILE":"true",
+
+        "ZAPPER_LOG_CREATE_STORAGE_ACCOUNT":"true",
+        "ZAPPER_LOG_DELETE_STORAGE_ACCOUNT":"true",
+        "ZAPPER_LOG_VIEW_STORAGE_ACCOUNTS":"false",
+        "ZAPPER_LOG_CREATE_CONTAINER":"true",
+        "ZAPPER_LOG_CONFIGURE_CORS":"true",
+        "ZAPPER_LOG_CONFIGURE_DATA_PROTECTION":"true",
+        "ZAPPER_LOG_VIEW_DATA_PROTECTION_STATUS":"false",
+        "ZAPPER_LOG_CONFIGURE_DATA_LIFECYCLE":"true",
+        "ZAPPER_LOG_VIEW_DATA_LIFECYCLE_RULES":"false",
+        "ZAPPER_LOG_DELETE_DATA_LIFECYCLE_RULE":"true",
+        "ZAPPER_LOG_ENABLE_SFTP":"true",
+        "ZAPPER_LOG_DISABLE_SFTP":"true",
+        "ZAPPER_LOG_VIEW_SFTP_STATUS":"true",
+        "ZAPPER_LOG_ASSIGN_STORAGE_ROLE":"true",
+
+        "ZAPPER_LOG_CREATE_USER":"true",
+        "ZAPPER_LOG_UPDATE_USER":"true",
+        "ZAPPER_LOG_DELETE_USER":"true",
+        "ZAPPER_LOG_VIEW_USERS":"false",
+        "ZAPPER_LOG_ENABLE_USER_ROLE":"true",
+        "ZAPPER_LOG_DISABLE_USER_ROLE":"true",
+        "ZAPPER_LOG_DELETE_USER_ROLE":"true",
+
+        "ZAPPER_LOG_CREATE_ORGANIZATION":"true",
+        "ZAPPER_LOG_UPDATE_ORGANIZATION":"true",
+        "ZAPPER_LOG_DELETE_ORGANIZATION":"true",
+        "ZAPPER_LOG_VIEW_ORGANIZATIONS":"false",
+
+        "ZAPPER_LOG_CREATE_ROLE":"true",
+        "ZAPPER_LOG_UPDATE_ROLE":"true",
+        "ZAPPER_LOG_DELETE_ROLE":"true",
+        "ZAPPER_LOG_VIEW_ROLES":"false",
+
+        "ZAPPER_LOG_ONBOARDING_UPLOAD":"true",
+        "ZAPPER_LOG_ONBOARDING_COMMIT":"true",
+        "ZAPPER_LOG_ONBOARDING_RETRY":"true",
+        "ZAPPER_LOG_ONBOARDING_DELETE":"true",
+        "ZAPPER_LOG_ONBOARDING_VIEW":"false",
+        "ZAPPER_ONBOARDING_PREVIEW_LIMIT":"50",
+
+        "ZAPPER_LOG_PGP_KEY_GENERATE":"true",
+        "ZAPPER_LOG_PGP_KEY_IMPORT":"true",
+        "ZAPPER_LOG_PGP_KEY_DELETE":"true",
+        "ZAPPER_LOG_VIEW_PGP_KEYS":"false",
+
+        "ZAPPER_LOG_FILE_ENCRYPT":"true",
+        "ZAPPER_LOG_FILE_DECRYPT":"true",
+        "ZAPPER_LOG_FILE_DECRYPT_FAILED":"true",
+        "ZAPPER_LOG_FILE_ENCRYPT_FAILED":"true",
+        "ZAPPER_DECRYPT_RESULTS_DIR": "my_decrypted",
+
+        "ZAPPER_LOG_INSTALL_SENTINEL_RULE":"true",
+        "ZAPPER_LOG_DELETE_SENTINEL_RULE":"true",
+        "ZAPPER_LOG_ENABLE_SENTINEL_RULE":"true",
+        "ZAPPER_LOG_DISABLE_SENTINEL_RULE":"true",
+        "ZAPPER_LOG_VIEW_SENTINEL_RULES": "true",
+
+        
+        "ZAPPER_CU_MAX_PAYLOAD_SIZE" : "5242880",
+        "ZAPPER_CU_MAX_RESULTS_PER_FILE":"5",
+        "ZAPPER_CU_POLL_INTERVAL_MS":"2000",
+        "ZAPPER_CU_DEFAULT_TIMEOUT_SEC":"120",
+        "ZAPPER_CU_VIDEO_TIMEOUT_SEC":"900",
+        "ZAPPER_CU_IMAGE_TIMEOUT_SEC":"120",
+        "ZAPPER_CU_DOCUMENT_TIMEOUT_SEC":"120",
+        "ZAPPER_CU_AUDIO_TIMEOUT_SEC":"120",
+        "ZAPPER_CU_VIDEO_MAX_POLLS": "4000",
+
+        "ZAPPER_LOG_GEO_ACCESS":"false",
+        "ZAPPER_LOG_UPDATE_GEO_FENCING":"false",
+        "ZAPPER_LOG_VIEW_INVENTORY" : "false",
+        "ZAPPER_LOG_CONFIGURE_INVENTORY" : "false",
+
+        "ZAPPER_LOG_CREATE_AI_AGENT":"true",
+        "ZAPPER_LOG_UPDATE_AI_AGENT":"true",
+        "ZAPPER_LOG_DELETE_AI_AGENT":"true",
+        "ZAPPER_LOG_VIEW_AI_AGENTS":"false",
+        "ZAPPER_LOG_RUN_AI_AGENT":"true",
+        "ZAPPER_AIAGENT_RESULTS_DIR": "[parameters('aiAgentResultsDir')]",
+
+        "ZAPPER_LOG_TRANSLATE_DOCUMENT":"true",
+        "ZAPPER_LOG_DELETE_TRANSLATED_DOCUMENT":"true",
+
+        "ZAPPER_ACTIVITY_LOG_STORE":"FALSE",
+
+        "ZAPPER_LOG_CREATE_SFTP_LOCAL_USER":"true",
+        "ZAPPER_LOG_UPDATE_SFTP_LOCAL_USER":"true",
+        "ZAPPER_LOG_DELETE_SFTP_LOCAL_USER":"true",
+        "ZAPPER_LOG_DISABLE_SFTP_LOCAL_USER":"true",
+        "ZAPPER_LOG_VIEW_SFTP_LOCAL_USERS":"false",
+        "ZAPPER_LOG_ROTATE_SFTP_SSH_KEY":"true",
+        "ZAPPER_LOG_ROTATE_SFTP_PASSWORD":"true",
+        "ZAPPER_LOG_MAP_SFTP_USER":"true",
+        "ZAPPER_LOG_VIEW_SFTP_SELF_ACCESS":"false",
+        "ZAPPER_LOG_DOWNLOAD_SFTP_CREDENTIALS":"true",
+
+        "SENTINEL_ENABLED": "[toLower(string(parameters('enableSentinel')))]",
+        "SENTINEL_WORKSPACE_ID": "[if(parameters('enableSentinel'), reference(resourceId('Microsoft.OperationalInsights/workspaces', parameters('logAnalyticsWorkspaceName')), '2022-10-01').customerId, '')]",
+        "SENTINEL_WORKSPACE_NAME": "[if(parameters('enableSentinel'), parameters('logAnalyticsWorkspaceName'), '')]",
+        "SENTINEL_SHARED_KEY": "[if(parameters('enableSentinel'), listKeys(resourceId('Microsoft.OperationalInsights/workspaces', parameters('logAnalyticsWorkspaceName')), '2022-10-01').primarySharedKey, '')]",
+        "SENTINEL_LOG_TYPE": "ZapperSecurityEvents",
+
+        "ZAPPER_GEO_FENCING_ENABLED": "[toLower(string(parameters('enableGeoFencing')))]",
+        "ZAPPER_GEO_PROVIDER": "[if(parameters('enableGeoFencing'), 'azure-maps', '')]",
+        "ZAPPER_AZURE_MAPS_ACCOUNT_NAME": "[if(parameters('enableGeoFencing'), parameters('azureMapsAccountName'), '')]",
+        "AZURE_MAPS_SECRET_NAME": "[if(and(parameters('enableGeoFencing'), parameters('useKeyVaultAtRuntime')), parameters('azureMapsSecretName'), '')]",
+        "ZAPPER_AZURE_MAPS_KEY": "[if(and(parameters('enableGeoFencing'), not(parameters('useKeyVaultAtRuntime'))), listKeys(resourceId('Microsoft.Maps/accounts', parameters('azureMapsAccountName')), '2023-06-01').primaryKey, '')]"
+      }
+    },
+
+    {
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "name": "[guid(resourceGroup().id, parameters('webAppName'), 'rg-contributor')]",
+      "dependsOn": [ "[resourceId('Microsoft.Web/sites', parameters('webAppName'))]" ],
+      "properties": {
+        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions','b24988ac-6180-42a0-ab88-20f7382dd24c')]",
+        "principalId": "[reference(resourceId('Microsoft.Web/sites', parameters('webAppName')), '2022-03-01', 'Full').identity.principalId]",
+        "principalType": "ServicePrincipal"
+      }
+    },
+    {
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "name": "[guid(resourceGroup().id, parameters('webAppName'), 'rg-blob-data-owner')]",
+      "dependsOn": [ "[resourceId('Microsoft.Web/sites', parameters('webAppName'))]" ],
+      "properties": {
+        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('blobDataRoleDefinitionId'))]",
+        "principalId": "[reference(resourceId('Microsoft.Web/sites', parameters('webAppName')), '2022-03-01', 'Full').identity.principalId]",
+        "principalType": "ServicePrincipal"
+      }
+    },
+    {
+      "condition": "[parameters('acaUseForDownloads')]",
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "name": "[guid(resourceGroup().id, parameters('containerAppName'), 'aca-blob-rg-scope')]",
+      "dependsOn": [ "[resourceId('Microsoft.App/containerApps', parameters('containerAppName'))]" ],
+      "properties": {
+        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions','ba92f5b4-2d11-453d-a403-e96b0029c9fe')]",
+        "principalId": "[reference(resourceId('Microsoft.App/containerApps', parameters('containerAppName')), '2024-03-01', 'Full').identity.principalId]",
+        "principalType": "ServicePrincipal"
+      }
+    },
+    {
+      "condition": "[parameters('enableAIAgent')]",
+      "type": "Microsoft.App/containerApps",
+      "apiVersion": "2024-03-01",
+      "name": "[variables('aiAgentProcessorAppName')]",
+      "location": "[parameters('location')]",
+      "identity": "[if(parameters('acrPublic'), json('{\"type\":\"SystemAssigned\"}'), json(concat('{\"type\":\"SystemAssigned, UserAssigned\",\"userAssignedIdentities\":{\"', variables('acaPullIdentityId'), '\":{}}}')))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('logAnalyticsWorkspaceName'))]",
+        "[resourceId('Microsoft.App/managedEnvironments', parameters('containerAppsEnvName'))]"
+      ],
+      "properties": {
+        "managedEnvironmentId": "[resourceId('Microsoft.App/managedEnvironments', parameters('containerAppsEnvName'))]",
+        "configuration": {
+          "ingress": {
+            "external": true,
+            "targetPort": 8080,
+            "transport": "http",
+            "allowInsecure": false
+          },
+          "registries": "[variables('acaRegistries')]"
+        },
+        "template": {
+          "containers": [
+            {
+              "name": "processor",
+              "image": "[variables('aiAgentProcessorImage')]",
+              "resources": {
+                "cpu": 0.5,
+                "memory": "1.0Gi"
+              },
+              "env": []
+            }
+          ],
+          "scale": {
+            "minReplicas": 1,
+            "maxReplicas": 5,
+            "rules": [
+              {
+                "name": "http-requests",
+                "http": {
+                  "metadata": {
+                    "concurrentRequests": "10"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "condition": "[parameters('enableAIAgent')]",
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "name": "[guid(resourceGroup().id, variables('aiAgentProcessorAppName'), 'processor-blob-contributor')]",
+      "dependsOn": [ "[resourceId('Microsoft.App/containerApps', variables('aiAgentProcessorAppName'))]" ],
+      "properties": {
+        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions','ba92f5b4-2d11-453d-a403-e96b0029c9fe')]",
+        "principalId": "[reference(resourceId('Microsoft.App/containerApps', variables('aiAgentProcessorAppName')), '2024-03-01', 'Full').identity.principalId]",
+        "principalType": "ServicePrincipal"
+      }
+    }
+  ],
+  "outputs": {
+    "webAppURL": {
+      "type": "string",
+      "value": "[format('https://{0}.azurewebsites.net', parameters('webAppName'))]"
+    },
+    "containerImage": {
+      "type": "string",
+      "value": "[variables('linuxFxVersionValue')]"
+    },
+    "managedIdentityPrincipalId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Web/sites', parameters('webAppName')), '2022-03-01', 'Full').identity.principalId]"
+    },
+    "acrLoginServer": {
+      "type": "string",
+      "value": "[variables('acrLoginServer')]"
+    },
+    "keyVaultUri": {
+      "type": "string",
+      "value": "[if(parameters('useKeyVaultAtRuntime'), variables('vaultUri'), '')]"
+    },
+    "containerAppInternalDns": {
+      "type": "string",
+      "value": "[if(parameters('acaUseForDownloads'), format('{0}.{1}.internal', parameters('containerAppName'), reference(resourceId('Microsoft.App/managedEnvironments', parameters('containerAppsEnvName')), '2024-03-01').defaultDomain), '')]"
+    },
+    "webAppResourceId": {
+      "type": "string",
+      "value": "[resourceId('Microsoft.Web/sites', parameters('webAppName'))]"
+    },
+    "webAppPortalUrl": {
+      "type": "string",
+      "value": "[format('https://portal.azure.com/#resource{0}/overview', resourceId('Microsoft.Web/sites', parameters('webAppName')))]"
+    },
+    "containerAppResourceId": {
+      "type": "string",
+      "value": "[if(parameters('acaUseForDownloads'), resourceId('Microsoft.App/containerApps', parameters('containerAppName')), '')]"
+    },
+    "containerAppPortalUrl": {
+      "type": "string",
+      "value": "[if(parameters('acaUseForDownloads'), format('https://portal.azure.com/#resource{0}/overview', resourceId('Microsoft.App/containerApps', parameters('containerAppName'))), '')]"
+    },
+    "sentinelEnabled": {
+      "type": "bool",
+      "value": "[parameters('enableSentinel')]"
+    },
+    "sentinelWorkspaceId": {
+      "type": "string",
+      "value": "[if(parameters('enableSentinel'), reference(resourceId('Microsoft.OperationalInsights/workspaces', parameters('logAnalyticsWorkspaceName')), '2022-10-01').customerId, '')]"
+    },
+    "sentinelPortalUrl": {
+      "type": "string",
+      "value": "[if(parameters('enableSentinel'), format('https://portal.azure.com/#blade/Microsoft_Azure_Security_Insights/MainMenuBlade/0/subscriptionId/{0}/resourceGroup/{1}/workspaceName/{2}', subscription().subscriptionId, resourceGroup().name, parameters('logAnalyticsWorkspaceName')), '')]"
+    },
+    "azureMapsKeyForExistingVault": {
+      "type": "securestring",
+      "value": "[if(and(parameters('enableGeoFencing'), parameters('useKeyVaultAtRuntime'), parameters('useExistingKeyVault')), listKeys(resourceId('Microsoft.Maps/accounts', parameters('azureMapsAccountName')), '2023-06-01').primaryKey, '')]"
+    },
+    "azureMapsSecretName": {
+      "type": "string",
+      "value": "[if(and(parameters('enableGeoFencing'), parameters('useKeyVaultAtRuntime')), parameters('azureMapsSecretName'), '')]"
+    }
+  }
+}

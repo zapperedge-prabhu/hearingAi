@@ -1,0 +1,32 @@
+/* Entra ID Company Branding - Center ZAPPER EDGE DEMO */
+
+/* Target the main banner text "ZAPPER EDGE DEMO" */
+.ext-title,
+.ext-header-text,
+.banner-title,
+.outer-text,
+.tenant-branding-text,
+div[data-bind*="text: tenantBranding"] {
+  text-align: center !important;
+}
+
+/* Target the subtitle "Sign in to access Zapper Edge Demo" */
+.ext-subtitle,
+.tenant-description,
+.login-description,
+div[data-bind*="description"] {
+  text-align: center !important;
+}
+
+/* Broader selectors for any header/title elements */
+.ext-sign-in-box > div:first-child,
+.ext-sign-in-box .row:first-child,
+.tile > div:first-child {
+  text-align: center !important;
+}
+
+/* Target all direct children of sign-in container that might be text */
+.ext-sign-in-box > div,
+.win-scroll > div {
+  text-align: center !important;
+}

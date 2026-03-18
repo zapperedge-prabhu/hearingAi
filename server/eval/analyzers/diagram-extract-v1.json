@@ -1,0 +1,16 @@
+{
+  "description": "Zapper Eval: extract diagram labels and a short summary",
+  "baseAnalyzerId": "prebuilt-image",
+  "models": { "completion": "gpt-4.1-mini" },
+  "config": {
+    "returnDetails": true,
+    "disableContentFiltering": false
+  },
+  "fieldSchema": {
+    "name": "Diagram",
+    "fields": {
+      "DiagramSummary": { "type": "string", "method": "generate" },
+      "Labels": { "type": "array", "method": "extract", "items": { "type": "string" } }
+    }
+  }
+}

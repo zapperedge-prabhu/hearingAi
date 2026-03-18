@@ -1,0 +1,34 @@
+{
+  "description": "Zapper Eval: extract answer blocks from handwritten English answer sheets",
+  "baseAnalyzerId": "prebuilt-document",
+  "models": {
+    "completion": "gpt-4.1-mini",
+    "embedding": "text-embedding-3-large"
+  },
+  "config": {
+    "enableOcr": true,
+    "enableLayout": true,
+    "returnDetails": true,
+    "estimateFieldSourceAndConfidence": true,
+    "disableContentFiltering": false
+  },
+  "fieldSchema": {
+    "name": "AnswerSheet",
+    "fields": {
+      "StudentId": { "type": "string", "method": "extract" },
+      "StudentName": { "type": "string", "method": "extract" },
+      "AnswerBlocks": {
+        "type": "array",
+        "method": "extract",
+        "items": {
+          "type": "object",
+          "properties": {
+            "QuestionNum": { "type": "string", "method": "extract" },
+            "AnswerText": { "type": "string", "method": "extract" },
+            "HasDiagram": { "type": "boolean", "method": "classify" }
+          }
+        }
+      }
+    }
+  }
+}
