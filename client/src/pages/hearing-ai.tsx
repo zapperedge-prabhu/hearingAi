@@ -279,7 +279,7 @@ export default function HearingAI() {
   useEffect(() => {
     const fetchCuConfig = async () => {
       try {
-        const res = await apiRequest("GET", "/api/cu/config");
+        const res = await apiRequest("GET", "/api/hai/config");
         const data = await res.json();
         if (data.success && data.config?.maxResultsPerFile !== undefined) {
           setMaxResultsPerFile(data.config.maxResultsPerFile); // 0 = unlimited
@@ -300,7 +300,7 @@ export default function HearingAI() {
       try {
         const sasResponse = await apiRequest(
           "GET", 
-          `/api/content-understanding/generate-sas?organizationId=${selectedOrganizationId}&path=${encodeURIComponent(selectedFile.path)}`
+          `/api/hearing-ai/generate-sas?organizationId=${selectedOrganizationId}&path=${encodeURIComponent(selectedFile.path)}`
         );
         const sasData = await sasResponse.json();
         if (sasData.success) {
@@ -322,7 +322,7 @@ export default function HearingAI() {
     try {
       const res = await apiRequest(
         "GET",
-        `/api/cu/results/list?organizationId=${selectedOrganizationId}&sourceFilePath=${encodeURIComponent(selectedFile.path)}`
+        `/api/hai/results/list?organizationId=${selectedOrganizationId}&sourceFilePath=${encodeURIComponent(selectedFile.path)}`
       );
       const data = await res.json();
       if (data.success && data.results) {
@@ -357,7 +357,7 @@ export default function HearingAI() {
       try {
         const res = await apiRequest(
           "GET",
-          `/api/cu/post-call-analysis/get?organizationId=${selectedOrganizationId}&sourceFilePath=${encodeURIComponent(selectedFile.path)}`
+          `/api/hai/post-call-analysis/get?organizationId=${selectedOrganizationId}&sourceFilePath=${encodeURIComponent(selectedFile.path)}`
         );
         const data = await res.json();
         if (data.success && data.data) {
@@ -383,7 +383,7 @@ export default function HearingAI() {
 
     setIsSaving(true);
     try {
-      const res = await apiRequest("POST", "/api/cu/results/save", {
+      const res = await apiRequest("POST", "/api/hai/results/save", {
         organizationId: selectedOrganizationId,
         sourceFilePath: selectedFile.path,
         fileName: selectedFile.name,
@@ -398,7 +398,7 @@ export default function HearingAI() {
         });
         const listRes = await apiRequest(
           "GET",
-          `/api/cu/results/list?organizationId=${selectedOrganizationId}&sourceFilePath=${encodeURIComponent(selectedFile.path)}`
+          `/api/hai/results/list?organizationId=${selectedOrganizationId}&sourceFilePath=${encodeURIComponent(selectedFile.path)}`
         );
         const listData = await listRes.json();
         if (listData.success) {
@@ -466,7 +466,7 @@ export default function HearingAI() {
     setPostCallSavedAt(null);
     try {
       const transcriptText = buildTranscriptText(analysisResult.result.contents);
-      const res = await apiRequest("POST", "/api/cu/post-call-analysis", {
+      const res = await apiRequest("POST", "/api/hai/post-call-analysis", {
         organizationId: selectedOrganizationId,
         transcriptText,
         sourceFilePath: selectedFile?.path || null,
@@ -515,7 +515,7 @@ export default function HearingAI() {
     try {
       const res = await apiRequest(
         "GET",
-        `/api/cu/results/get?organizationId=${selectedOrganizationId}&blobPath=${encodeURIComponent(blobPath)}`
+        `/api/hai/results/get?organizationId=${selectedOrganizationId}&blobPath=${encodeURIComponent(blobPath)}`
       );
       const data = await res.json();
       if (data.success && data.result) {
@@ -551,7 +551,7 @@ export default function HearingAI() {
     if (!selectedOrganizationId) return;
 
     try {
-      const res = await apiRequest("DELETE", "/api/cu/results/delete", {
+      const res = await apiRequest("DELETE", "/api/hai/results/delete", {
         organizationId: selectedOrganizationId,
         blobPath
       });
@@ -666,7 +666,7 @@ export default function HearingAI() {
       setVideoJobPollCount(pollCount);
       
       try {
-        const response = await apiRequest("GET", `/api/cu/jobs/${encodeURIComponent(jobId)}/status`);
+        const response = await apiRequest("GET", `/api/hai/jobs/${encodeURIComponent(jobId)}/status`);
         const data = await response.json();
         
         if (data.status === "succeeded") {
@@ -683,11 +683,11 @@ export default function HearingAI() {
             });
           } else {
             try {
-              const listResp = await apiRequest("GET", `/api/cu/results/list?organizationId=${selectedOrganizationId}&sourceFilePath=${encodeURIComponent(selectedFile?.path || "")}`);
+              const listResp = await apiRequest("GET", `/api/hai/results/list?organizationId=${selectedOrganizationId}&sourceFilePath=${encodeURIComponent(selectedFile?.path || "")}`);
               const listData = await listResp.json();
               if (listData.success && listData.results && listData.results.length > 0) {
                 const latestResult = listData.results[listData.results.length - 1];
-                const getResp = await apiRequest("GET", `/api/cu/results/get?organizationId=${selectedOrganizationId}&blobPath=${encodeURIComponent(latestResult.blobPath)}`);
+                const getResp = await apiRequest("GET", `/api/hai/results/get?organizationId=${selectedOrganizationId}&blobPath=${encodeURIComponent(latestResult.blobPath)}`);
                 const resultData = await getResp.json();
                 if (resultData.success && resultData.result) {
                   const analysisData = resultData.result.analysisResult || resultData.result;
@@ -763,7 +763,7 @@ export default function HearingAI() {
       // Generate SAS URL first
       const sasResponse = await apiRequest(
         "GET", 
-        `/api/content-understanding/generate-sas?organizationId=${selectedOrganizationId}&path=${encodeURIComponent(selectedFile.path)}`
+        `/api/hearing-ai/generate-sas?organizationId=${selectedOrganizationId}&path=${encodeURIComponent(selectedFile.path)}`
       );
 
       const sasData = await sasResponse.json();
@@ -783,7 +783,7 @@ export default function HearingAI() {
           throw new Error("Storage account or container information missing from API response");
         }
 
-        const submitResponse = await apiRequest("POST", "/api/cu/jobs/submit", {
+        const submitResponse = await apiRequest("POST", "/api/hai/jobs/submit", {
           sasUrl,
           foundryResourceName: selectedResource.resourceName,
           organizationId: selectedOrganizationId,
@@ -813,7 +813,7 @@ export default function HearingAI() {
       }
 
       // Non-video files - use sync analysis
-      const analyzeResponse = await apiRequest("POST", "/api/content-understanding/analyze", {
+      const analyzeResponse = await apiRequest("POST", "/api/hearing-ai/analyze", {
         sasUrl,
         foundryResourceName: selectedResource.resourceName,
         organizationId: selectedOrganizationId,

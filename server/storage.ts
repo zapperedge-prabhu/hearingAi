@@ -1,11 +1,11 @@
 import { 
   users, roles, organizations, userRoles, 
   userActivities, storageAccounts, aiAgents, rolePermissionsModular,
-  orgPgpKeys, foundryResources, foundryResourceSets, cuJobs,
+  orgPgpKeys, foundryResources, foundryResourceSets, cuJobs, haiJobs,
   permissionUserMgmt, permissionRoleMgmt, permissionOrgMgmt,
   permissionStorageMgmt, permissionFileMgmt, permissionActivityLogs,
   permissionAiAgentMgmt, permissionPgpKeyMgmt, permissionHelpCenter,
-  permissionSiemMgmt, permissionFoundryMgmt, permissionContentUnderstanding, permissionDocumentTranslation,
+  permissionSiemMgmt, permissionFoundryMgmt, permissionContentUnderstanding, permissionHearingAi, permissionDocumentTranslation,
   permissionSftpMgmt, permissionCustomerOnboarding, permissionTransferReports, sftpLocalUsers, sftpLocalUserScopes, sftpRotationEvents,
   permissionRiskCategories, permissionEval,
   type User, type InsertUser, type Role, type InsertRole, 
@@ -29,6 +29,8 @@ import {
   type PermissionSiemMgmt, type InsertPermissionSiemMgmt,
   type PermissionFoundryMgmt, type InsertPermissionFoundryMgmt,
   type PermissionContentUnderstanding, type InsertPermissionContentUnderstanding,
+  type InsertPermissionHearingAi,
+  type HaiJob, type InsertHaiJob,
   type PermissionDocumentTranslation, type InsertPermissionDocumentTranslation,
   type PermissionSftpMgmt, type InsertPermissionSftpMgmt,
   type RolePermissionModular, type InsertRolePermissionModular,
@@ -140,6 +142,7 @@ export interface IStorage {
   checkUserSiemPermission(userEmail: string, action: 'install' | 'delete' | 'enableDisable' | 'view' | 'incidentsView'): Promise<boolean>;
   checkUserFoundryPermission(userEmail: string, action: 'add' | 'edit' | 'delete' | 'view'): Promise<boolean>;
   checkUserContentUnderstandingPermission(userEmail: string, action: 'view' | 'runAnalysis' | 'saveAnalysis' | 'deleteAnalysis' | 'menuVisibility'): Promise<boolean>;
+  checkUserHearingAiPermission(userEmail: string, action: 'view' | 'runAnalysis' | 'saveAnalysis' | 'deleteAnalysis' | 'menuVisibility'): Promise<boolean>;
   checkUserDocumentTranslationPermission(userEmail: string, action: 'view' | 'runTranslation' | 'deleteTranslation'): Promise<boolean>;
   checkUserEvalPermission(userEmail: string, action: 'view' | 'run' | 'review' | 'finalize' | 'menuVisibility'): Promise<boolean>;
 
@@ -221,6 +224,15 @@ export interface IStorage {
   updateCuJob(jobId: string, data: Partial<InsertCuJob>): Promise<CuJob | undefined>;
   deleteCuJob(jobId: string): Promise<boolean>;
   getPendingCuJobs(): Promise<CuJob[]>;
+
+  // HearingAI Async Jobs
+  createHaiJob(job: InsertHaiJob): Promise<HaiJob>;
+  getHaiJob(jobId: string): Promise<HaiJob | undefined>;
+  getHaiJobsByUser(userId: number, limit?: number): Promise<HaiJob[]>;
+  getHaiJobsByOrganization(organizationId: number, limit?: number): Promise<HaiJob[]>;
+  updateHaiJob(jobId: string, data: Partial<InsertHaiJob>): Promise<HaiJob | undefined>;
+  deleteHaiJob(jobId: string): Promise<boolean>;
+  getPendingHaiJobs(): Promise<HaiJob[]>;
 
   // Permission Risk Categories
   getPermissionRiskCategories(): Promise<PermissionRiskCategory[]>;
@@ -727,6 +739,14 @@ export class DatabaseStorage implements IStorage {
       menuVisibility: permissions.contentUnderstanding?.menuVisibility || false,
     };
 
+    const hearingAiData: InsertPermissionHearingAi = {
+      view: permissions.hearingAi?.view || false,
+      runAnalysis: permissions.hearingAi?.runAnalysis || false,
+      saveAnalysis: permissions.hearingAi?.saveAnalysis || false,
+      deleteAnalysis: permissions.hearingAi?.deleteAnalysis || false,
+      menuVisibility: permissions.hearingAi?.menuVisibility || false,
+    };
+
     const documentTranslationData: InsertPermissionDocumentTranslation = {
       view: permissions.documentTranslation?.view || false,
       runTranslation: permissions.documentTranslation?.runTranslation || false,
@@ -778,6 +798,7 @@ export class DatabaseStorage implements IStorage {
     const [siemMgmt] = await db.insert(permissionSiemMgmt).values(siemMgmtData).returning();
     const [foundryMgmt] = await db.insert(permissionFoundryMgmt).values(foundryMgmtData).returning();
     const [contentUnderstanding] = await db.insert(permissionContentUnderstanding).values(contentUnderstandingData).returning();
+    const [hearingAiPerm] = await db.insert(permissionHearingAi).values(hearingAiData).returning();
     const [documentTranslation] = await db.insert(permissionDocumentTranslation).values(documentTranslationData).returning();
     const [sftpMgmt] = await db.insert(permissionSftpMgmt).values(sftpMgmtData).returning();
     const [customerOnboarding] = await db.insert(permissionCustomerOnboarding).values(customerOnboardingData).returning();
@@ -807,6 +828,7 @@ export class DatabaseStorage implements IStorage {
       permissionSiemMgmtId: siemMgmt.id,
       permissionFoundryMgmtId: foundryMgmt.id,
       permissionContentUnderstandingId: contentUnderstanding.id,
+      permissionHearingAiId: hearingAiPerm.id,
       permissionDocumentTranslationId: documentTranslation.id,
       permissionSftpMgmtId: sftpMgmt.id,
       permissionCustomerOnboardingId: customerOnboarding.id,
@@ -1652,6 +1674,45 @@ export class DatabaseStorage implements IStorage {
             WHERE role_id = ${roleId}
           `);
           console.log(`[UPDATE-PERMS] Linked content understanding permission ${newCuPerm[0].id} to role ${roleId}`);
+        }
+      }
+
+      // Update HearingAI permissions - handle case where record doesn't exist (for roles created before this module)
+      if (permissions.hearingAi) {
+        const existingHaiPermResult = await db.execute(sql`
+          SELECT permission_hearing_ai_id 
+          FROM role_permissions_modular 
+          WHERE role_id = ${roleId}
+        `);
+        
+        const existingHaiPermId = existingHaiPermResult.rows[0]?.permission_hearing_ai_id;
+        
+        if (existingHaiPermId) {
+          await db.execute(sql`
+            UPDATE permission_hearing_ai 
+            SET view = ${permissions.hearingAi.view || false}, 
+                run_analysis = ${permissions.hearingAi.runAnalysis || false}, 
+                save_analysis = ${permissions.hearingAi.saveAnalysis || false}, 
+                delete_analysis = ${permissions.hearingAi.deleteAnalysis || false},
+                menu_visibility = ${permissions.hearingAi.menuVisibility || false}
+            WHERE id = ${existingHaiPermId}
+          `);
+        } else {
+          console.log(`[UPDATE-PERMS] Creating hearing ai permissions for existing role ${roleId}`);
+          const newHaiPerm = await db.insert(permissionHearingAi).values({
+            view: permissions.hearingAi.view || false,
+            runAnalysis: permissions.hearingAi.runAnalysis || false,
+            saveAnalysis: permissions.hearingAi.saveAnalysis || false,
+            deleteAnalysis: permissions.hearingAi.deleteAnalysis || false,
+            menuVisibility: permissions.hearingAi.menuVisibility || false,
+          }).returning();
+          
+          await db.execute(sql`
+            UPDATE role_permissions_modular 
+            SET permission_hearing_ai_id = ${newHaiPerm[0].id}
+            WHERE role_id = ${roleId}
+          `);
+          console.log(`[UPDATE-PERMS] Linked hearing ai permission ${newHaiPerm[0].id} to role ${roleId}`);
         }
       }
 
@@ -2524,6 +2585,7 @@ export class DatabaseStorage implements IStorage {
     siemMgmt: { install: boolean; delete: boolean; enableDisable: boolean; view: boolean; incidentsView: boolean } | null;
     foundryMgmt: { add: boolean; edit: boolean; delete: boolean; view: boolean; tabWizard: boolean; tabResources: boolean; tabFoundryAction: boolean; tabChatPlayground: boolean; tabResourceSets: boolean; tabContentUnderstanding: boolean } | null;
     contentUnderstanding: { view: boolean; runAnalysis: boolean; saveAnalysis: boolean; deleteAnalysis: boolean; menuVisibility: boolean } | null;
+    hearingAi: { view: boolean; runAnalysis: boolean; saveAnalysis: boolean; deleteAnalysis: boolean; menuVisibility: boolean } | null;
     documentTranslation: { view: boolean; runTranslation: boolean; deleteTranslation: boolean } | null;
     sftpMgmt: { view: boolean; create: boolean; update: boolean; disable: boolean; delete: boolean; mapUser: boolean; viewSelfAccess: boolean; rotateSshSelf: boolean; rotatePasswordSelf: boolean } | null;
     customerOnboarding: { view: boolean; upload: boolean; commit: boolean; delete: boolean } | null;
@@ -2546,6 +2608,7 @@ export class DatabaseStorage implements IStorage {
           permissionSiemMgmtId: rolePermissionsModular.permissionSiemMgmtId,
           permissionFoundryMgmtId: rolePermissionsModular.permissionFoundryMgmtId,
           permissionContentUnderstandingId: rolePermissionsModular.permissionContentUnderstandingId,
+          permissionHearingAiId: rolePermissionsModular.permissionHearingAiId,
           permissionDocumentTranslationId: rolePermissionsModular.permissionDocumentTranslationId,
           permissionSftpMgmtId: rolePermissionsModular.permissionSftpMgmtId,
           permissionCustomerOnboardingId: rolePermissionsModular.permissionCustomerOnboardingId,
@@ -2574,6 +2637,7 @@ export class DatabaseStorage implements IStorage {
           siemMgmt: null,
           foundryMgmt: null,
           contentUnderstanding: null,
+          hearingAi: null,
           documentTranslation: null,
           sftpMgmt: null,
           customerOnboarding: null,
@@ -2597,6 +2661,7 @@ export class DatabaseStorage implements IStorage {
         permissionSiemMgmtId: null as number | null,
         permissionFoundryMgmtId: null as number | null,
         permissionContentUnderstandingId: null as number | null,
+        permissionHearingAiId: null as number | null,
         permissionDocumentTranslationId: null as number | null,
         permissionSftpMgmtId: null as number | null,
         permissionCustomerOnboardingId: null as number | null,
@@ -2645,6 +2710,9 @@ export class DatabaseStorage implements IStorage {
         if (row.permissionContentUnderstandingId && !permissions.permissionContentUnderstandingId) {
           permissions.permissionContentUnderstandingId = row.permissionContentUnderstandingId;
         }
+        if ((row as any).permissionHearingAiId && !permissions.permissionHearingAiId) {
+          permissions.permissionHearingAiId = (row as any).permissionHearingAiId;
+        }
         if (row.permissionDocumentTranslationId && !permissions.permissionDocumentTranslationId) {
           permissions.permissionDocumentTranslationId = row.permissionDocumentTranslationId;
         }
@@ -2674,6 +2742,7 @@ export class DatabaseStorage implements IStorage {
         siemMgmt: null,
         foundryMgmt: null,
         contentUnderstanding: null,
+        hearingAi: null,
         documentTranslation: null,
         sftpMgmt: null,
         customerOnboarding: null,
@@ -2895,6 +2964,24 @@ export class DatabaseStorage implements IStorage {
         }
       }
 
+      // Fetch HearingAI permissions
+      if (permissions.permissionHearingAiId) {
+        const [hearingAiPerm] = await db
+          .select()
+          .from(permissionHearingAi)
+          .where(eq(permissionHearingAi.id, permissions.permissionHearingAiId));
+        
+        if (hearingAiPerm) {
+          result.hearingAi = {
+            view: hearingAiPerm.view,
+            runAnalysis: hearingAiPerm.runAnalysis,
+            saveAnalysis: hearingAiPerm.saveAnalysis,
+            deleteAnalysis: hearingAiPerm.deleteAnalysis,
+            menuVisibility: hearingAiPerm.menuVisibility,
+          };
+        }
+      }
+
       // Fetch Document Translation permissions
       if (permissions.permissionDocumentTranslationId) {
         const [documentTranslationPerm] = await db
@@ -3035,6 +3122,7 @@ export class DatabaseStorage implements IStorage {
         siemMgmt: null,
         foundryMgmt: null,
         contentUnderstanding: null,
+        hearingAi: null,
         documentTranslation: null,
         sftpMgmt: null,
         customerOnboarding: null,
@@ -3370,6 +3458,40 @@ export class DatabaseStorage implements IStorage {
       return false;
     } catch (error) {
       console.error('Error checking Content Understanding permission:', error);
+      return false;
+    }
+  }
+
+  // HearingAI Permission Check
+  async checkUserHearingAiPermission(userEmail: string, action: 'view' | 'runAnalysis' | 'saveAnalysis' | 'deleteAnalysis' | 'menuVisibility'): Promise<boolean> {
+    try {
+      const userRolesList = await db
+        .select({
+          roleId: userRoles.roleId,
+          isEnabled: userRoles.isEnabled
+        })
+        .from(users)
+        .innerJoin(userRoles, eq(users.id, userRoles.userId))
+        .where(and(
+          eq(users.email, userEmail),
+          eq(userRoles.isEnabled, true)
+        ));
+
+      if (!userRolesList.length) {
+        return false;
+      }
+
+      for (const userRole of userRolesList) {
+        const rolePermissions = await this.getUserRolePermissions(userEmail, userRole.roleId);
+        
+        if (rolePermissions.hearingAi && (rolePermissions.hearingAi as Record<string, boolean>)[action] === true) {
+          return true;
+        }
+      }
+
+      return false;
+    } catch (error) {
+      console.error('Error checking HearingAI permission:', error);
       return false;
     }
   }
@@ -3932,6 +4054,62 @@ export class DatabaseStorage implements IStorage {
         )
       )
       .orderBy(cuJobs.createdAt);
+  }
+
+  // HearingAI Async Jobs
+  async createHaiJob(job: InsertHaiJob): Promise<HaiJob> {
+    const [newJob] = await db.insert(haiJobs).values(job).returning();
+    return newJob;
+  }
+
+  async getHaiJob(jobId: string): Promise<HaiJob | undefined> {
+    const [job] = await db.select().from(haiJobs).where(eq(haiJobs.jobId, jobId));
+    return job || undefined;
+  }
+
+  async getHaiJobsByUser(userId: number, limit: number = 50): Promise<HaiJob[]> {
+    return await db
+      .select()
+      .from(haiJobs)
+      .where(eq(haiJobs.userId, userId))
+      .orderBy(desc(haiJobs.createdAt))
+      .limit(limit);
+  }
+
+  async getHaiJobsByOrganization(organizationId: number, limit: number = 50): Promise<HaiJob[]> {
+    return await db
+      .select()
+      .from(haiJobs)
+      .where(eq(haiJobs.organizationId, organizationId))
+      .orderBy(desc(haiJobs.createdAt))
+      .limit(limit);
+  }
+
+  async updateHaiJob(jobId: string, data: Partial<InsertHaiJob>): Promise<HaiJob | undefined> {
+    const [updatedJob] = await db
+      .update(haiJobs)
+      .set(data)
+      .where(eq(haiJobs.jobId, jobId))
+      .returning();
+    return updatedJob || undefined;
+  }
+
+  async deleteHaiJob(jobId: string): Promise<boolean> {
+    const result = await db.delete(haiJobs).where(eq(haiJobs.jobId, jobId)).returning();
+    return result.length > 0;
+  }
+
+  async getPendingHaiJobs(): Promise<HaiJob[]> {
+    return await db
+      .select()
+      .from(haiJobs)
+      .where(
+        or(
+          eq(haiJobs.status, 'submitted'),
+          eq(haiJobs.status, 'running')
+        )
+      )
+      .orderBy(haiJobs.createdAt);
   }
 
   // Permission Risk Categories

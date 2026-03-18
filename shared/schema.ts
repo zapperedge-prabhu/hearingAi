@@ -293,6 +293,20 @@ export const permissionContentUnderstanding = pgTable("permission_content_unders
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+// HearingAI Permission Table - Controls access to HearingAI features (separate from Content Understanding)
+export const permissionHearingAi = pgTable("permission_hearing_ai", {
+  id: serial("id").primaryKey(),
+  view: boolean("view").notNull().default(false),             // View saved analysis results
+  runAnalysis: boolean("run_analysis").notNull().default(false),  // Execute analysis
+  saveAnalysis: boolean("save_analysis").notNull().default(false), // Save analysis results
+  deleteAnalysis: boolean("delete_analysis").notNull().default(false), // Delete saved analysis
+  menuVisibility: boolean("menu_visibility").notNull().default(false), // Show in sidebar menu
+  createdBy: integer("created_by"),
+  updatedBy: integer("updated_by"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 // Document Translation Permission Table - Controls access to Document Translation features
 export const permissionDocumentTranslation = pgTable("permission_document_translation", {
   id: serial("id").primaryKey(),
@@ -359,6 +373,7 @@ export const rolePermissionsModular = pgTable("role_permissions_modular", {
   permissionSiemMgmtId: integer("permission_siem_mgmt_id").references(() => permissionSiemMgmt.id),
   permissionFoundryMgmtId: integer("permission_foundry_mgmt_id").references(() => permissionFoundryMgmt.id),
   permissionContentUnderstandingId: integer("permission_content_understanding_id").references(() => permissionContentUnderstanding.id),
+  permissionHearingAiId: integer("permission_hearing_ai_id").references(() => permissionHearingAi.id),
   permissionDocumentTranslationId: integer("permission_document_translation_id").references(() => permissionDocumentTranslation.id),
   permissionSftpMgmtId: integer("permission_sftp_mgmt_id").references(() => permissionSftpMgmt.id),
   permissionCustomerOnboardingId: integer("permission_customer_onboarding_id").references(() => permissionCustomerOnboarding.id),
@@ -1328,6 +1343,67 @@ export interface CuJobStatus {
   error?: string;
   resultPath?: string;
 }
+
+// ========================================
+// HearingAI Jobs Table
+// ========================================
+export const haiJobs = pgTable("hai_jobs", {
+  id: serial("id").primaryKey(),
+  jobId: varchar("job_id", { length: 100 }).notNull().unique(),
+  organizationId: integer("organization_id").notNull().references(() => organizations.id),
+  userId: integer("user_id").notNull().references(() => users.id),
+  sourceFilePath: varchar("source_file_path", { length: 1000 }).notNull(),
+  storageAccountName: varchar("storage_account_name", { length: 100 }).notNull(),
+  containerName: varchar("container_name", { length: 100 }).notNull(),
+  foundryResourceName: varchar("foundry_resource_name", { length: 100 }).notNull(),
+  azureOperationLocation: varchar("azure_operation_location", { length: 2000 }),
+  status: varchar("status", { length: 50 }).notNull().default("submitted"),
+  resultPath: varchar("result_path", { length: 1000 }),
+  error: text("error"),
+  pollAttempts: integer("poll_attempts").notNull().default(0),
+  contentType: varchar("content_type", { length: 50 }).notNull().default("audio"),
+  analyzerId: varchar("analyzer_id", { length: 100 }),
+  createdAt: timestamp("created_at").defaultNow(),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+}, (table) => ({
+  jobIdIdx: index("idx_hai_jobs_job_id").on(table.jobId),
+  statusIdx: index("idx_hai_jobs_status").on(table.status),
+  orgIdx: index("idx_hai_jobs_org").on(table.organizationId),
+  userIdx: index("idx_hai_jobs_user").on(table.userId),
+}));
+
+// HAI Jobs Relations
+export const haiJobsRelations = relations(haiJobs, ({ one }) => ({
+  organization: one(organizations, { fields: [haiJobs.organizationId], references: [organizations.id] }),
+  user: one(users, { fields: [haiJobs.userId], references: [users.id] }),
+}));
+
+// HAI Job Types
+export type HaiJob = typeof haiJobs.$inferSelect;
+export type InsertHaiJob = typeof haiJobs.$inferInsert;
+
+// HAI Job Insert Schema
+export const insertHaiJobSchema = createInsertSchema(haiJobs, {
+  jobId: z.string().uuid("Job ID must be a valid UUID"),
+  organizationId: z.number().int().positive("Organization ID is required"),
+  userId: z.number().int().positive("User ID is required"),
+  sourceFilePath: z.string().min(1, "Source file path is required").max(1000),
+  storageAccountName: z.string().min(3).max(100),
+  containerName: z.string().min(1).max(100),
+  foundryResourceName: z.string().min(1).max(100),
+  status: z.enum(["submitted", "running", "succeeded", "failed", "cancelled"]).default("submitted"),
+  contentType: z.enum(["video", "audio", "document", "image"]).default("audio"),
+}).omit({
+  id: true,
+  createdAt: true,
+  startedAt: true,
+  completedAt: true,
+});
+
+// HearingAI Permission Insert Schema
+export const insertPermissionHearingAiSchema = createInsertSchema(permissionHearingAi).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertPermissionHearingAi = typeof insertPermissionHearingAiSchema._type;
 
 // ========================================
 // Eval (Answer Sheet Evaluation) Tables

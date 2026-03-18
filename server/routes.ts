@@ -35,6 +35,8 @@ import {
   foundryManagementAccessRequired,
   contentUnderstandingPermissionRequired,
   contentUnderstandingAccessRequired,
+  hearingAiPermissionRequired,
+  hearingAiAccessRequired,
   documentTranslationPermissionRequired,
   sftpPermissionRequired,
   inventoryPermissionRequired
@@ -316,6 +318,7 @@ import {
   checkCuAnalysisStatus
 } from "./content-understanding";
 import { cuPersistenceService } from "./cu-persistence";
+import { hearingAiPersistenceService } from "./hearing-ai-persistence";
 import { documentTranslationService } from "./documentTranslationService";
 import { provisionAdlsRoute } from "./provision-adls";
 import configRouter from "./routes/config";
@@ -19310,6 +19313,512 @@ IMPORTANT FIELD NOTES:
         res.json(result);
       } catch (error: any) {
         console.error("[POST-CALL] Get error:", error);
+        res.status(500).json({ error: error.message || "Failed to retrieve post-call analysis" });
+      }
+    }
+  );
+
+  // ============================================================
+  // HearingAI API Routes (independent replica of CU/content-understanding)
+  // ============================================================
+
+  // GET /api/hearing-ai/generate-sas - Generate SAS URL for HearingAI
+  app.get(
+    "/api/hearing-ai/generate-sas",
+    tokenRequired,
+    organizationAccessRequired,
+    hearingAiPermissionRequired('view'),
+    async (req, res) => {
+      try {
+        const { organizationId, path: filePath } = req.query;
+        if (!organizationId || !filePath) {
+          return res.status(400).json({ success: false, error: "organizationId and path are required" });
+        }
+        const orgId = parseInt(organizationId as string, 10);
+        const storageAccount = await storage.getStorageAccountByOrganization(orgId);
+        if (!storageAccount) {
+          return res.status(404).json({ success: false, error: "No storage account found for this organization" });
+        }
+        if (!credential) {
+          return res.status(500).json({ success: false, error: "Azure credentials not configured" });
+        }
+        let blobPath = filePath as string;
+        if (storageAccount.basePath && storageAccount.basePath.trim() !== "") {
+          const cleanBasePath = storageAccount.basePath.replace(/^\/+|\/+$/g, "");
+          const cleanFilePath = (filePath as string).replace(/^\/+/, "");
+          blobPath = `${cleanBasePath}/${cleanFilePath}`;
+        }
+        const blobServiceClient = new BlobServiceClient(`https://${storageAccount.name}.blob.core.windows.net`, credential);
+        const containerClient = blobServiceClient.getContainerClient(storageAccount.containerName);
+        const blobClient = containerClient.getBlobClient(blobPath);
+        const startsOn = new Date();
+        const expiresOn = new Date(startsOn.getTime() + 15 * 60 * 1000);
+        const userDelegationKey = await blobServiceClient.getUserDelegationKey(startsOn, expiresOn);
+        const sasOptions: any = { containerName: storageAccount.containerName, blobName: blobPath, permissions: BlobSASPermissions.parse("r"), startsOn, expiresOn };
+        const sasToken = generateBlobSASQueryParameters(sasOptions, userDelegationKey, storageAccount.name).toString();
+        const sasUrl = `${blobClient.url}?${sasToken}`;
+        res.json({ success: true, url: sasUrl, expiresIn: 900, storageAccount: storageAccount.name, container: storageAccount.containerName });
+      } catch (error: any) {
+        console.error("[HAI-SAS] Error:", error);
+        res.status(500).json({ success: false, error: error.message || "Failed to generate SAS URL" });
+      }
+    }
+  );
+
+  // POST /api/hearing-ai/analyze - Analyze a document using SAS URL
+  app.post(
+    "/api/hearing-ai/analyze",
+    tokenRequired,
+    hearingAiPermissionRequired('runAnalysis'),
+    async (req, res) => {
+      try {
+        const { sasUrl, foundryResourceName, analyzerId, options } = req.body;
+        if (!sasUrl) return res.status(400).json({ success: false, error: "sasUrl is required" });
+        if (!foundryResourceName) return res.status(400).json({ success: false, error: "foundryResourceName is required" });
+        const result = await analyzeDocument({ sasUrl, foundryResourceName, analyzerId, options });
+        if (result.success) {
+          res.json(result);
+        } else {
+          const status = result.status === "timeout" ? 504 : result.status === "cancelled" ? 410 : 500;
+          res.status(status).json(result);
+        }
+      } catch (error: any) {
+        console.error("[HAI-API] Analyze error:", error);
+        res.status(500).json({ success: false, error: error.message || "Failed to analyze document" });
+      }
+    }
+  );
+
+  // POST /api/hai/jobs/submit - Submit async HAI analysis job
+  app.post(
+    "/api/hai/jobs/submit",
+    tokenRequired,
+    organizationAccessRequired,
+    hearingAiPermissionRequired('runAnalysis'),
+    async (req, res) => {
+      try {
+        const { sasUrl, foundryResourceName, organizationId, sourceFilePath, storageAccountName, containerName, contentType: requestedContentType, analyzerId } = req.body;
+        const user = (req as any).user;
+        if (!sasUrl) return res.status(400).json({ success: false, error: "sasUrl is required" });
+        if (!foundryResourceName) return res.status(400).json({ success: false, error: "foundryResourceName is required" });
+        if (!organizationId) return res.status(400).json({ success: false, error: "organizationId is required" });
+        if (!sourceFilePath) return res.status(400).json({ success: false, error: "sourceFilePath is required" });
+        if (!storageAccountName) return res.status(400).json({ success: false, error: "storageAccountName is required" });
+        if (!containerName) return res.status(400).json({ success: false, error: "containerName is required" });
+        const contentType = requestedContentType || detectContentType(sasUrl);
+        const allowedTypes = ["video", "audio", "document", "image"];
+        if (!allowedTypes.includes(contentType)) {
+          return res.status(400).json({ success: false, error: `Unsupported content type: ${contentType}` });
+        }
+        const dbUser = await storage.getUserByEmail(user.email);
+        if (!dbUser) return res.status(403).json({ success: false, error: "User not found" });
+        const submitResult = await submitCuAnalysisAsync({ sasUrl, foundryResourceName, analyzerId, contentType });
+        if (!submitResult.success) {
+          return res.status(500).json({ success: false, error: submitResult.error || `Failed to submit ${contentType} for analysis` });
+        }
+        const jobId = crypto.randomUUID();
+        await storage.createHaiJob({
+          jobId,
+          azureOperationLocation: submitResult.operationLocation!,
+          organizationId: parseInt(organizationId),
+          userId: dbUser.id,
+          sourceFilePath,
+          storageAccountName,
+          containerName,
+          foundryResourceName,
+          analyzerId: submitResult.analyzerId || analyzerId || "",
+          contentType,
+          status: "submitted",
+        });
+        res.json({ success: true, jobId, contentType, status: "submitted", message: `${contentType} analysis job submitted.` });
+      } catch (error: any) {
+        console.error("[HAI-ASYNC-API] Submit error:", error);
+        res.status(500).json({ success: false, error: error.message || "Failed to submit for analysis" });
+      }
+    }
+  );
+
+  // GET /api/hai/jobs/:jobId/status - Get HAI job status
+  app.get(
+    "/api/hai/jobs/:jobId/status",
+    tokenRequired,
+    async (req, res) => {
+      try {
+        const { jobId } = req.params;
+        const user = (req as any).user;
+        const job = await storage.getHaiJob(jobId);
+        if (!job) return res.status(404).json({ success: false, error: "Job not found" });
+        const dbUser = await storage.getUserByEmail(user.email);
+        if (!dbUser) return res.status(403).json({ success: false, error: "User not found" });
+        const userOrgIds = await storage.getUserOrganizationIds(user.email);
+        if (!userOrgIds.includes(job.organizationId)) {
+          return res.status(403).json({ success: false, error: "Access denied to this job" });
+        }
+        if (job.status === "failed" || job.status === "cancelled") {
+          return res.json({ success: true, jobId, contentType: job.contentType, status: job.status, resultPath: job.resultPath, error: job.error, createdAt: job.createdAt?.toISOString(), startedAt: job.startedAt?.toISOString(), completedAt: job.completedAt?.toISOString(), pollAttempts: job.pollAttempts });
+        }
+        if (job.status === "succeeded") {
+          let result: any = null;
+          if (job.resultPath && job.resultPath.includes(".json")) {
+            try {
+              const getResponse = await hearingAiPersistenceService.getResult(job.resultPath, job.storageAccountName, job.containerName, job.organizationId);
+              if (getResponse.success) result = getResponse.result;
+            } catch (err) { console.error(`[HAI-ASYNC-API] Error fetching result for job ${jobId}:`, err); }
+          }
+          if (!result && job.azureOperationLocation) {
+            try {
+              const statusResult = await checkCuAnalysisStatus(job.azureOperationLocation);
+              if (statusResult.status === "succeeded" && statusResult.result) result = statusResult.result;
+            } catch (fetchErr: any) { console.warn(`[HAI-ASYNC-API] Could not re-fetch result for job ${jobId}: ${fetchErr.message}`); }
+          }
+          return res.json({ success: true, jobId, contentType: job.contentType, status: job.status, resultPath: job.resultPath, result, error: job.error, createdAt: job.createdAt?.toISOString(), startedAt: job.startedAt?.toISOString(), completedAt: job.completedAt?.toISOString(), pollAttempts: job.pollAttempts });
+        }
+        if (!job.azureOperationLocation) {
+          return res.status(500).json({ success: false, error: "Job missing Azure operation location" });
+        }
+        const statusResult = await checkCuAnalysisStatus(job.azureOperationLocation);
+        const newPollAttempts = (job.pollAttempts || 0) + 1;
+        if (statusResult.status === "succeeded" && statusResult.result) {
+          try {
+            const saveResult = await hearingAiPersistenceService.saveResult({
+              organizationId: job.organizationId, storageAccountName: job.storageAccountName,
+              containerName: job.containerName, sourceFilePath: job.sourceFilePath,
+              analysisResult: statusResult.result, userEmail: user.email, saveMode: 'auto'
+            });
+            const savedPath = saveResult.blobPath || job.sourceFilePath;
+            await storage.updateHaiJob(jobId, { status: "succeeded", resultPath: savedPath, pollAttempts: newPollAttempts, completedAt: new Date() });
+            return res.json({ success: true, jobId, contentType: job.contentType, status: "succeeded", resultPath: savedPath, result: statusResult.result, pollAttempts: newPollAttempts, completedAt: new Date().toISOString() });
+          } catch (saveError: any) {
+            await storage.updateHaiJob(jobId, { status: "succeeded", error: `Result obtained but save failed: ${saveError.message}`, pollAttempts: newPollAttempts, completedAt: new Date() });
+            return res.json({ success: true, jobId, contentType: job.contentType, status: "succeeded", result: statusResult.result, warning: `Analysis completed but save failed: ${saveError.message}`, pollAttempts: newPollAttempts });
+          }
+        }
+        if (statusResult.status === "failed") {
+          await storage.updateHaiJob(jobId, { status: "failed", error: statusResult.error || "Analysis failed", pollAttempts: newPollAttempts, completedAt: new Date() });
+          return res.json({ success: false, jobId, contentType: job.contentType, status: "failed", error: statusResult.error, pollAttempts: newPollAttempts });
+        }
+        if (statusResult.status === "cancelled") {
+          await storage.updateHaiJob(jobId, { status: "cancelled", pollAttempts: newPollAttempts, completedAt: new Date() });
+          return res.json({ success: false, jobId, contentType: job.contentType, status: "cancelled", pollAttempts: newPollAttempts });
+        }
+        await storage.updateHaiJob(jobId, { pollAttempts: newPollAttempts });
+        res.json({ success: true, jobId, contentType: job.contentType, status: "running", pollAttempts: newPollAttempts, createdAt: job.createdAt?.toISOString(), startedAt: job.startedAt?.toISOString() });
+      } catch (error: any) {
+        console.error("[HAI-ASYNC-API] Status check error:", error);
+        res.status(500).json({ success: false, error: error.message || "Failed to check job status" });
+      }
+    }
+  );
+
+  // GET /api/hai/jobs - List HAI jobs
+  app.get(
+    "/api/hai/jobs",
+    tokenRequired,
+    async (req, res) => {
+      try {
+        const user = (req as any).user;
+        const limit = parseInt(req.query.limit as string) || 50;
+        const organizationId = req.query.organizationId ? parseInt(req.query.organizationId as string) : undefined;
+        const contentType = req.query.contentType as string | undefined;
+        const dbUser = await storage.getUserByEmail(user.email);
+        if (!dbUser) return res.status(403).json({ success: false, error: "User not found" });
+        let jobs;
+        if (organizationId) {
+          const userOrgIds = await storage.getUserOrganizationIds(user.email);
+          if (!userOrgIds.includes(organizationId)) {
+            return res.status(403).json({ success: false, error: "Access denied to this organization" });
+          }
+          jobs = await storage.getHaiJobsByOrganization(organizationId, limit);
+        } else {
+          jobs = await storage.getHaiJobsByUser(dbUser.id, limit);
+        }
+        if (contentType) jobs = jobs.filter((j: any) => j.contentType === contentType);
+        res.json({
+          success: true,
+          jobs: await Promise.all(jobs.map(async (job: any) => {
+            let resultJson = null;
+            if (job.status === "succeeded" && job.resultPath && job.resultPath.includes(".json")) {
+              try {
+                const getResponse = await hearingAiPersistenceService.getResult(job.resultPath, job.storageAccountName, job.containerName, job.organizationId);
+                if (getResponse.success) resultJson = getResponse.result;
+              } catch (err) { console.error(`[HAI] Error fetching result for job ${job.jobId}:`, err); }
+            }
+            return { jobId: job.jobId, contentType: job.contentType, status: job.status, sourceFilePath: job.sourceFilePath, storageAccountName: job.storageAccountName, containerName: job.containerName, resultPath: job.resultPath, resultJson, error: job.error, pollAttempts: job.pollAttempts, createdAt: job.createdAt?.toISOString(), startedAt: job.startedAt?.toISOString(), completedAt: job.completedAt?.toISOString() };
+          }))
+        });
+      } catch (error: any) {
+        console.error("[HAI-ASYNC-API] List jobs error:", error);
+        res.status(500).json({ success: false, error: error.message || "Failed to list jobs" });
+      }
+    }
+  );
+
+  // DELETE /api/hai/jobs/:jobId - Delete a HAI job
+  app.delete(
+    "/api/hai/jobs/:jobId",
+    tokenRequired,
+    hearingAiPermissionRequired('deleteAnalysis'),
+    async (req, res) => {
+      try {
+        const { jobId } = req.params;
+        const user = (req as any).user;
+        const job = await storage.getHaiJob(jobId);
+        if (!job) return res.status(404).json({ success: false, error: "Job not found" });
+        const userOrgIds = await storage.getUserOrganizationIds(user.email);
+        if (!userOrgIds.includes(job.organizationId)) {
+          return res.status(403).json({ success: false, error: "Access denied to this job" });
+        }
+        const deleted = await storage.deleteHaiJob(jobId);
+        if (deleted) {
+          res.json({ success: true, message: "Job deleted" });
+        } else {
+          res.status(500).json({ success: false, error: "Failed to delete job" });
+        }
+      } catch (error: any) {
+        console.error("[HAI-ASYNC-API] Delete job error:", error);
+        res.status(500).json({ success: false, error: error.message || "Failed to delete job" });
+      }
+    }
+  );
+
+  // GET /api/hai/config - Get HAI configuration
+  app.get(
+    "/api/hai/config",
+    tokenRequired,
+    hearingAiPermissionRequired('view'),
+    async (req, res) => {
+      try {
+        const MAX_RESULTS_PER_FILE = (() => { const p = parseInt(process.env.ZAPPER_CU_MAX_RESULTS_PER_FILE || "0"); return Number.isFinite(p) && p > 0 ? p : 0; })();
+        const MAX_PAYLOAD_SIZE = (() => { const p = parseInt(process.env.ZAPPER_CU_MAX_PAYLOAD_SIZE || "5242880"); return Number.isFinite(p) && p > 0 ? p : 5242880; })();
+        const POLL_INTERVAL_MS = (() => { const p = parseInt(process.env.ZAPPER_CU_POLL_INTERVAL_MS || "2000"); return Number.isFinite(p) && p > 0 ? p : 2000; })();
+        const DEFAULT_TIMEOUT_SEC = (() => { const p = parseInt(process.env.ZAPPER_CU_DEFAULT_TIMEOUT_SEC || "120"); return Number.isFinite(p) && p > 0 ? p : 120; })();
+        const VIDEO_TIMEOUT_SEC = (() => { const p = parseInt(process.env.ZAPPER_CU_VIDEO_TIMEOUT_SEC || "900"); return Number.isFinite(p) && p > 0 ? p : 900; })();
+        const IMAGE_TIMEOUT_SEC = (() => { const p = parseInt(process.env.ZAPPER_CU_IMAGE_TIMEOUT_SEC || String(DEFAULT_TIMEOUT_SEC)); return Number.isFinite(p) && p > 0 ? p : DEFAULT_TIMEOUT_SEC; })();
+        const DOCUMENT_TIMEOUT_SEC = (() => { const p = parseInt(process.env.ZAPPER_CU_DOCUMENT_TIMEOUT_SEC || String(DEFAULT_TIMEOUT_SEC)); return Number.isFinite(p) && p > 0 ? p : DEFAULT_TIMEOUT_SEC; })();
+        const AUDIO_TIMEOUT_SEC = (() => { const p = parseInt(process.env.ZAPPER_CU_AUDIO_TIMEOUT_SEC || String(DEFAULT_TIMEOUT_SEC)); return Number.isFinite(p) && p > 0 ? p : DEFAULT_TIMEOUT_SEC; })();
+        res.setHeader("Cache-Control", "no-store");
+        res.json({ success: true, config: { maxResultsPerFile: MAX_RESULTS_PER_FILE, maxPayloadSize: MAX_PAYLOAD_SIZE, pollIntervalMs: POLL_INTERVAL_MS, defaultTimeoutSec: DEFAULT_TIMEOUT_SEC, videoTimeoutSec: VIDEO_TIMEOUT_SEC, imageTimeoutSec: IMAGE_TIMEOUT_SEC, documentTimeoutSec: DOCUMENT_TIMEOUT_SEC, audioTimeoutSec: AUDIO_TIMEOUT_SEC } });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: "Failed to get HAI configuration" });
+      }
+    }
+  );
+
+  // POST /api/hai/results/save - Save HAI result
+  app.post(
+    "/api/hai/results/save",
+    tokenRequired,
+    organizationAccessRequired,
+    hearingAiPermissionRequired('saveAnalysis'),
+    async (req, res) => {
+      try {
+        const { organizationId, sourceFilePath, analysisResult, fileName } = req.body;
+        if (!organizationId) return res.status(400).json({ success: false, error: "organizationId is required" });
+        if (!sourceFilePath) return res.status(400).json({ success: false, error: "sourceFilePath is required" });
+        if (!analysisResult) return res.status(400).json({ success: false, error: "analysisResult is required" });
+        if (sourceFilePath.includes('..') || sourceFilePath.includes('//')) return res.status(400).json({ success: false, error: "Invalid file path" });
+        const payloadSize = JSON.stringify(analysisResult).length;
+        const MAX_PAYLOAD_SIZE = parseInt(process.env.ZAPPER_CU_MAX_PAYLOAD_SIZE || String(5 * 1024 * 1024), 10);
+        if (payloadSize > MAX_PAYLOAD_SIZE) return res.status(400).json({ success: false, error: `Analysis result exceeds maximum size` });
+        if (typeof analysisResult !== 'object' || analysisResult === null) return res.status(400).json({ success: false, error: "analysisResult must be a valid object" });
+        const storageAccount = await storage.getStorageAccountByOrganization(organizationId);
+        if (!storageAccount) return res.status(404).json({ success: false, error: "No storage account found" });
+        const sourceFileExists = await hearingAiPersistenceService.verifySourceFileExists(storageAccount.name, storageAccount.containerName, sourceFilePath);
+        if (!sourceFileExists) return res.status(404).json({ success: false, error: "Source file not found in storage" });
+        const userEmail = (req as any).user?.email || "unknown";
+        const result = await hearingAiPersistenceService.saveResult({ storageAccountName: storageAccount.name, containerName: storageAccount.containerName, sourceFilePath, analysisResult, organizationId, userEmail, fileName, saveMode: 'manual' });
+        res.json(result);
+      } catch (error: any) {
+        console.error("[HAI API] Save result error:", error);
+        res.status(500).json({ success: false, error: error.message || "Failed to save HAI result" });
+      }
+    }
+  );
+
+  // GET /api/hai/results/list - List HAI results
+  app.get(
+    "/api/hai/results/list",
+    tokenRequired,
+    organizationAccessRequired,
+    hearingAiPermissionRequired('view'),
+    async (req, res) => {
+      try {
+        const organizationId = parseInt(req.query.organizationId as string);
+        const sourceFilePath = req.query.sourceFilePath as string;
+        if (!organizationId || isNaN(organizationId)) return res.status(400).json({ success: false, error: "organizationId is required" });
+        if (!sourceFilePath) return res.status(400).json({ success: false, error: "sourceFilePath is required" });
+        if (sourceFilePath.includes('..') || sourceFilePath.includes('//')) return res.status(400).json({ success: false, error: "Invalid file path" });
+        const storageAccount = await storage.getStorageAccountByOrganization(organizationId);
+        if (!storageAccount) return res.status(404).json({ success: false, error: "No storage account found" });
+        const result = await hearingAiPersistenceService.listResults(storageAccount.name, storageAccount.containerName, sourceFilePath);
+        res.json(result);
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message || "Failed to list HAI results" });
+      }
+    }
+  );
+
+  // GET /api/hai/results/get - Get a specific HAI result
+  app.get(
+    "/api/hai/results/get",
+    tokenRequired,
+    organizationAccessRequired,
+    hearingAiPermissionRequired('view'),
+    async (req, res) => {
+      try {
+        const organizationId = parseInt(req.query.organizationId as string);
+        const blobPath = req.query.blobPath as string;
+        if (!organizationId || isNaN(organizationId)) return res.status(400).json({ success: false, error: "organizationId is required" });
+        if (!blobPath) return res.status(400).json({ success: false, error: "blobPath is required" });
+        const haiFolderName = process.env.ZAPPER_HAI_RESULTS_DIR || process.env.ZAPPER_CU_RESULTS_DIR || "hai_folder";
+        if (!blobPath.startsWith(`${haiFolderName}/`) || blobPath.includes('..') || blobPath.includes('//')) {
+          return res.status(400).json({ success: false, error: "Invalid blob path" });
+        }
+        const storageAccount = await storage.getStorageAccountByOrganization(organizationId);
+        if (!storageAccount) return res.status(404).json({ success: false, error: "No storage account found" });
+        const result = await hearingAiPersistenceService.getResult(storageAccount.name, storageAccount.containerName, blobPath, organizationId);
+        res.json(result);
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message || "Failed to get HAI result" });
+      }
+    }
+  );
+
+  // DELETE /api/hai/results/delete - Delete a specific HAI result
+  app.delete(
+    "/api/hai/results/delete",
+    tokenRequired,
+    organizationAccessRequired,
+    hearingAiPermissionRequired('deleteAnalysis'),
+    async (req, res) => {
+      try {
+        const { organizationId, blobPath } = req.body;
+        if (!organizationId) return res.status(400).json({ success: false, error: "organizationId is required" });
+        if (!blobPath) return res.status(400).json({ success: false, error: "blobPath is required" });
+        const haiFolderName = process.env.ZAPPER_HAI_RESULTS_DIR || process.env.ZAPPER_CU_RESULTS_DIR || "hai_folder";
+        if (!blobPath.startsWith(`${haiFolderName}/`) || blobPath.includes('..') || blobPath.includes('//')) {
+          return res.status(400).json({ success: false, error: "Invalid blob path" });
+        }
+        const storageAccount = await storage.getStorageAccountByOrganization(organizationId);
+        if (!storageAccount) return res.status(404).json({ success: false, error: "No storage account found" });
+        const result = await hearingAiPersistenceService.deleteResult(storageAccount.name, storageAccount.containerName, blobPath, organizationId);
+        res.json(result);
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message || "Failed to delete HAI result" });
+      }
+    }
+  );
+
+  // POST /api/hai/post-call-analysis - Run AI-powered post-call analysis (HearingAI)
+  app.post(
+    "/api/hai/post-call-analysis",
+    tokenRequired,
+    organizationAccessRequired,
+    hearingAiPermissionRequired('runAnalysis'),
+    async (req, res) => {
+      try {
+        const { organizationId, transcriptText, metadata } = req.body;
+        const userEmail = req.user?.email;
+        if (!userEmail) return res.status(401).json({ error: "User not authenticated" });
+        if (!organizationId || !transcriptText) return res.status(400).json({ error: "organizationId and transcriptText are required" });
+        const orgId = parseInt(organizationId);
+        if (isNaN(orgId)) return res.status(400).json({ error: "Invalid organizationId" });
+        const foundryResult = await storage.getFoundryResourceSetWithResourceByOrg(orgId);
+        if (!foundryResult) return res.status(404).json({ error: "No Foundry resource set configured for this organization." });
+        const { resourceSet, foundryResource } = foundryResult;
+        if (!resourceSet.defaultAgentId) return res.status(404).json({ error: "No default AI agent configured." });
+        const projectName = foundryResource.projectName;
+        const customSubdomain = foundryResource.projectEndpoint ? new URL(foundryResource.projectEndpoint).hostname.split('.')[0] : foundryResource.resourceName;
+        const agentId = resourceSet.defaultAgentId;
+        const projectNameOnly = projectName.includes("/") ? projectName.split("/").pop() || projectName : projectName;
+        const baseEndpoint = `https://${customSubdomain.toLowerCase()}.services.ai.azure.com`;
+        const projectEndpoint = `${baseEndpoint}/api/projects/${encodeURIComponent(projectNameOnly)}`;
+        const apiVersion = "2025-05-01";
+        const token = await foundryProvisioningService.getAIAccessToken();
+        const threadUrl = `${projectEndpoint}/threads?api-version=${apiVersion}`;
+        const threadResp = await fetch(threadUrl, { method: "POST", headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({}) });
+        if (!threadResp.ok) { const err = await threadResp.text(); return res.status(threadResp.status).json({ error: "Failed to create AI thread", details: err }); }
+        const threadData = await threadResp.json();
+        const threadId = threadData.id;
+        const callId = metadata?.callId || "Unknown";
+        const duration = metadata?.duration || "Unknown";
+        const agentIdMeta = metadata?.agentId || "Unknown";
+        const callType = metadata?.callType || "Unknown";
+        const industry = metadata?.industry || "Unknown";
+        const date = metadata?.date || new Date().toISOString().split("T")[0];
+        const prompt = `You are an expert conversational intelligence analyst. Perform a deep analysis on the following call transcript and return ONLY valid JSON — no markdown, no explanation outside the JSON.\n\nTRANSCRIPT:\n${transcriptText}\n\nMETADATA:\n- Call ID: ${callId}\n- Duration: ${duration}\n- Agent ID: ${agentIdMeta}\n- Call Type: ${callType}\n- Industry: ${industry}\n- Date: ${date}\n\nReturn a comprehensive JSON analysis of the call.`;
+        const messageUrl = `${projectEndpoint}/threads/${threadId}/messages?api-version=${apiVersion}`;
+        const msgResp = await fetch(messageUrl, { method: "POST", headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ role: "user", content: prompt }) });
+        if (!msgResp.ok) { const err = await msgResp.text(); return res.status(msgResp.status).json({ error: "Failed to send analysis prompt", details: err }); }
+        const runUrl = `${projectEndpoint}/threads/${threadId}/runs?api-version=${apiVersion}`;
+        const runResp = await fetch(runUrl, { method: "POST", headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ assistant_id: agentId }) });
+        if (!runResp.ok) { const err = await runResp.text(); return res.status(runResp.status).json({ error: "Failed to start agent run", details: err }); }
+        const runData = await runResp.json();
+        const runId = runData.id;
+        const maxWait = 120000;
+        const pollMs = 1500;
+        const startTime = Date.now();
+        let runStatus = runData.status;
+        let lastError: any = null;
+        while (runStatus === 'queued' || runStatus === 'in_progress') {
+          if (Date.now() - startTime > maxWait) return res.status(408).json({ error: "Analysis timed out." });
+          await new Promise(r => setTimeout(r, pollMs));
+          const statusResp = await fetch(`${projectEndpoint}/threads/${threadId}/runs/${runId}?api-version=${apiVersion}`, { headers: { "Authorization": `Bearer ${token}` } });
+          if (statusResp.ok) { const sd = await statusResp.json(); runStatus = sd.status; if (sd.last_error) lastError = sd.last_error; }
+        }
+        if (runStatus !== 'completed') { const msg = lastError?.message || `Run failed with status: ${runStatus}`; return res.status(500).json({ error: msg }); }
+        const messagesResp = await fetch(`${projectEndpoint}/threads/${threadId}/messages?api-version=${apiVersion}`, { headers: { "Authorization": `Bearer ${token}` } });
+        if (!messagesResp.ok) { const err = await messagesResp.text(); return res.status(messagesResp.status).json({ error: "Failed to retrieve analysis result", details: err }); }
+        const messagesData = await messagesResp.json();
+        const assistantMsg = (messagesData.data || []).find((m: any) => m.role === "assistant");
+        if (!assistantMsg) return res.status(500).json({ error: "No analysis response from agent" });
+        let rawContent = "";
+        if (Array.isArray(assistantMsg.content)) {
+          rawContent = assistantMsg.content.filter((c: any) => c.type === "text").map((c: any) => c.text?.value || "").join("");
+        } else if (typeof assistantMsg.content === "string") {
+          rawContent = assistantMsg.content;
+        }
+        rawContent = rawContent.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
+        let analysisJson: any;
+        try { analysisJson = JSON.parse(rawContent); } catch { return res.status(500).json({ error: "Agent returned invalid JSON.", raw: rawContent.slice(0, 1000) }); }
+        const sourceFilePath = req.body.sourceFilePath;
+        let savedAt: string | undefined;
+        if (sourceFilePath) {
+          try {
+            const storageAccount = await storage.getStorageAccountByOrganization(orgId);
+            if (storageAccount) {
+              const saveResult = await hearingAiPersistenceService.savePostCallAnalysis(storageAccount.name, storageAccount.containerName, sourceFilePath, analysisJson, orgId, userEmail);
+              if (saveResult.success) savedAt = new Date().toISOString();
+            }
+          } catch (saveErr: any) { console.warn(`[HAI-POST-CALL] Auto-save error: ${saveErr.message}`); }
+        }
+        res.json({ success: true, analysis: analysisJson, savedAt });
+      } catch (error: any) {
+        console.error("[HAI-POST-CALL] Error:", error);
+        res.status(500).json({ error: error.message || "Post-call analysis failed" });
+      }
+    }
+  );
+
+  // GET /api/hai/post-call-analysis/get - Retrieve saved HAI post-call analysis
+  app.get(
+    "/api/hai/post-call-analysis/get",
+    tokenRequired,
+    organizationAccessRequired,
+    hearingAiPermissionRequired('view'),
+    async (req, res) => {
+      try {
+        const organizationId = parseInt(req.query.organizationId as string);
+        const sourceFilePath = req.query.sourceFilePath as string;
+        const userEmail = req.user?.email;
+        if (!userEmail) return res.status(401).json({ error: "Not authenticated" });
+        if (!organizationId || isNaN(organizationId)) return res.status(400).json({ error: "organizationId is required" });
+        if (!sourceFilePath) return res.status(400).json({ error: "sourceFilePath is required" });
+        const storageAccount = await storage.getStorageAccountByOrganization(organizationId);
+        if (!storageAccount) return res.status(404).json({ success: false, error: "No storage account for this organization" });
+        const result = await hearingAiPersistenceService.getPostCallAnalysis(storageAccount.name, storageAccount.containerName, sourceFilePath, organizationId);
+        res.json(result);
+      } catch (error: any) {
         res.status(500).json({ error: error.message || "Failed to retrieve post-call analysis" });
       }
     }

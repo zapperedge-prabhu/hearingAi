@@ -767,6 +767,59 @@ export function evalPermissionRequired(action: 'view' | 'run' | 'review' | 'fina
   };
 }
 
+// 🔒 HearingAI permission middleware - Checks granular HearingAI permissions
+export function hearingAiPermissionRequired(action: 'view' | 'runAnalysis' | 'saveAnalysis' | 'deleteAnalysis' | 'menuVisibility') {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const userEmail = (req as any).user?.email;
+      if (!userEmail) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
+
+      console.log(`🔍 [HAI-PERM] Checking "${action}" permission for user: ${userEmail}`);
+      const hasPermission = await storage.checkUserHearingAiPermission(userEmail, action);
+      if (!hasPermission) {
+        console.log(`🔒 [HAI-PERM] Permission denied: ${userEmail} lacks "${action}" permission`);
+        return res.status(403).json({ 
+          error: `Access denied: You do not have permission to ${action.replace(/([A-Z])/g, ' $1').toLowerCase()} in HearingAI` 
+        });
+      }
+      console.log(`✅ [HAI-PERM] Permission granted: ${userEmail} has "${action}" permission`);  
+
+      next();
+    } catch (error) {
+      console.error(`🔒 [HAI-PERM] Permission check error for "${action}":`, error);
+      res.status(500).json({ error: 'Permission validation failed' });
+    }
+  };
+}
+
+// 🔒 HearingAI access middleware - Checks if user has menu visibility permission
+export async function hearingAiAccessRequired(req: Request, res: Response, next: NextFunction) {
+  try {
+    const userEmail = (req as any).user?.email;
+    if (!userEmail) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    console.log(`🔍 [HAI-ACCESS] Checking menu visibility access for user: ${userEmail}`);
+    const hasMenuAccess = await storage.checkUserHearingAiPermission(userEmail, 'menuVisibility');
+    
+    if (!hasMenuAccess) {
+      console.log(`🔒 [HAI-ACCESS] Access denied: ${userEmail} has no HearingAI menu visibility`);
+      return res.status(403).json({ 
+        error: 'Access denied: You do not have permission to access HearingAI' 
+      });
+    }
+    
+    console.log(`✅ [HAI-ACCESS] Access granted: ${userEmail} can access HearingAI`);
+    next();
+  } catch (error) {
+    console.error('🔒 [HAI-ACCESS] Access validation error:', error);
+    res.status(500).json({ error: 'Access validation failed' });
+  }
+}
+
 // 🔒 Content Understanding access middleware - Checks if user has menu visibility permission
 export async function contentUnderstandingAccessRequired(req: Request, res: Response, next: NextFunction) {
   try {
