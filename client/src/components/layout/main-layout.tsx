@@ -40,6 +40,8 @@ const getPageTitle = (location: string): string => {
       return "Data Lifecycle Management";
     case "/content-discovery":
       return "Content Discovery";
+    case "/hearing-ai":
+      return "HearingAI";
     case "/siem-rules":
       return "SIEM Rules";
     case "/sentinel-rules":
