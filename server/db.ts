@@ -264,6 +264,20 @@ async function autoCreateTables(db: ReturnType<typeof drizzle>) {
               "created_at" TIMESTAMP DEFAULT NOW() NOT NULL,
               "updated_at" TIMESTAMP DEFAULT NOW() NOT NULL
             )`,
+
+            // HearingAI permissions
+            `CREATE TABLE IF NOT EXISTS "permission_hearing_ai" (
+              "id" SERIAL PRIMARY KEY,
+              "view" BOOLEAN NOT NULL DEFAULT false,
+              "run_analysis" BOOLEAN NOT NULL DEFAULT false,
+              "save_analysis" BOOLEAN NOT NULL DEFAULT false,
+              "delete_analysis" BOOLEAN NOT NULL DEFAULT false,
+              "menu_visibility" BOOLEAN NOT NULL DEFAULT false,
+              "created_by" INTEGER,
+              "updated_by" INTEGER,
+              "created_at" TIMESTAMP DEFAULT NOW() NOT NULL,
+              "updated_at" TIMESTAMP DEFAULT NOW() NOT NULL
+            )`,
             
             // Document Translation permissions
             `CREATE TABLE IF NOT EXISTS "permission_document_translation" (
@@ -415,6 +429,7 @@ async function autoCreateTables(db: ReturnType<typeof drizzle>) {
               "permission_siem_mgmt_id" INTEGER,
               "permission_foundry_mgmt_id" INTEGER,
               "permission_content_understanding_id" INTEGER,
+              "permission_hearing_ai_id" INTEGER,
               "permission_document_translation_id" INTEGER,
               "permission_sftp_mgmt_id" INTEGER,
               "permission_customer_onboarding_id" INTEGER,
@@ -636,6 +651,34 @@ async function autoCreateTables(db: ReturnType<typeof drizzle>) {
             `CREATE INDEX IF NOT EXISTS "idx_cu_jobs_status" ON "cu_jobs" ("status")`,
             `CREATE INDEX IF NOT EXISTS "idx_cu_jobs_org" ON "cu_jobs" ("organization_id")`,
             `CREATE INDEX IF NOT EXISTS "idx_cu_jobs_user" ON "cu_jobs" ("user_id")`,
+
+            // HearingAI Jobs
+            `CREATE TABLE IF NOT EXISTS "hai_jobs" (
+              "id" SERIAL PRIMARY KEY,
+              "job_id" VARCHAR(100) NOT NULL UNIQUE,
+              "organization_id" INTEGER NOT NULL REFERENCES "organizations"("id"),
+              "user_id" INTEGER NOT NULL REFERENCES "users"("id"),
+              "source_file_path" VARCHAR(1000) NOT NULL,
+              "storage_account_name" VARCHAR(100) NOT NULL,
+              "container_name" VARCHAR(100) NOT NULL,
+              "foundry_resource_name" VARCHAR(100) NOT NULL,
+              "azure_operation_location" VARCHAR(2000),
+              "status" VARCHAR(50) NOT NULL DEFAULT 'submitted',
+              "result_path" VARCHAR(1000),
+              "error" TEXT,
+              "poll_attempts" INTEGER NOT NULL DEFAULT 0,
+              "content_type" VARCHAR(50) NOT NULL DEFAULT 'video',
+              "analyzer_id" VARCHAR(100),
+              "created_at" TIMESTAMP DEFAULT NOW(),
+              "started_at" TIMESTAMP,
+              "completed_at" TIMESTAMP
+            )`,
+
+            // Create indexes for hai_jobs
+            `CREATE INDEX IF NOT EXISTS "idx_hai_jobs_job_id" ON "hai_jobs" ("job_id")`,
+            `CREATE INDEX IF NOT EXISTS "idx_hai_jobs_status" ON "hai_jobs" ("status")`,
+            `CREATE INDEX IF NOT EXISTS "idx_hai_jobs_org" ON "hai_jobs" ("organization_id")`,
+            `CREATE INDEX IF NOT EXISTS "idx_hai_jobs_user" ON "hai_jobs" ("user_id")`,
             
             // File Transfer Reports - Track upload/download operations
             `CREATE TABLE IF NOT EXISTS "file_transfer_reports" (
@@ -1101,6 +1144,36 @@ async function autoCreateTables(db: ReturnType<typeof drizzle>) {
               ) THEN
                 ALTER TABLE "role_permissions_modular" ADD COLUMN "permission_eval_id" INTEGER;
               END IF;
+            END $$;`,
+            // Add permission_hearing_ai_id column to role_permissions_modular if it doesn't exist
+            `DO $$ 
+            BEGIN
+              IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns 
+                WHERE table_name = 'role_permissions_modular' 
+                AND column_name = 'permission_hearing_ai_id'
+              ) THEN
+                ALTER TABLE "role_permissions_modular" ADD COLUMN "permission_hearing_ai_id" INTEGER;
+              END IF;
+            END $$;`,
+            // Backfill permission_hearing_ai records for roles that don't have one yet
+            `DO $$
+            DECLARE
+              r RECORD;
+              new_perm_id INTEGER;
+            BEGIN
+              FOR r IN
+                SELECT rpm.id, rpm.role_id
+                FROM role_permissions_modular rpm
+                WHERE rpm.permission_hearing_ai_id IS NULL
+              LOOP
+                INSERT INTO permission_hearing_ai (view, run_analysis, save_analysis, delete_analysis, menu_visibility, created_at, updated_at)
+                VALUES (false, false, false, false, false, NOW(), NOW())
+                RETURNING id INTO new_perm_id;
+                UPDATE role_permissions_modular
+                SET permission_hearing_ai_id = new_perm_id
+                WHERE id = r.id;
+              END LOOP;
             END $$;`,
             // Eval Jobs table
             `CREATE TABLE IF NOT EXISTS "eval_jobs" (
