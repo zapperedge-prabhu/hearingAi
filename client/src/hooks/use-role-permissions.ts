@@ -14,6 +14,7 @@ interface RolePermissions {
   siemMgmt: { install: boolean; delete: boolean; enableDisable: boolean; view: boolean; incidentsView: boolean } | null;
   foundryMgmt: { add: boolean; edit: boolean; delete: boolean; view: boolean; tabWizard: boolean; tabResources: boolean; tabFoundryAction: boolean; tabChatPlayground: boolean; tabResourceSets: boolean; tabContentUnderstanding: boolean } | null;
   contentUnderstanding: { view: boolean; runAnalysis: boolean; saveAnalysis: boolean; deleteAnalysis: boolean; menuVisibility: boolean } | null;
+  hearingAi: { view: boolean; runAnalysis: boolean; saveAnalysis: boolean; deleteAnalysis: boolean; menuVisibility: boolean } | null;
   documentTranslation: { view: boolean; runTranslation: boolean; deleteTranslation: boolean } | null;
   sftpMgmt: { view: boolean; create: boolean; update: boolean; disable: boolean; delete: boolean; mapUser: boolean; viewSelfAccess: boolean; rotateSshSelf: boolean; rotatePasswordSelf: boolean } | null;
   customerOnboarding: { view: boolean; upload: boolean; commit: boolean; delete: boolean } | null;

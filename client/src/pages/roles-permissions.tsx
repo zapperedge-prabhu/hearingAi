@@ -14,7 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { LoadingSpinner } from "@/components/ui/spinner";
-import { Plus, Edit, Trash2, Users, Settings, Building, Database, File, Activity, Bot, Loader2, Lock, AlertCircle, BookOpen, Shield, Cpu, FileText, Scan, Languages, Key, Server, ClipboardCheck } from "lucide-react";
+import { Plus, Edit, Trash2, Users, Settings, Building, Database, File, Activity, Bot, Loader2, Lock, AlertCircle, BookOpen, Shield, Cpu, FileText, Scan, Languages, Key, Server, ClipboardCheck, Ear } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { useRolePermissions } from "@/hooks/use-role-permissions";
@@ -107,6 +107,13 @@ interface ModulePermissions {
     tabContentUnderstanding: boolean;
   };
   contentUnderstanding: {
+    view: boolean;
+    runAnalysis: boolean;
+    saveAnalysis: boolean;
+    deleteAnalysis: boolean;
+    menuVisibility: boolean;
+  };
+  hearingAi: {
     view: boolean;
     runAnalysis: boolean;
     saveAnalysis: boolean;
@@ -247,6 +254,7 @@ export default function RolesPermissions() {
     siemManagement: { install: false, delete: false, enableDisable: false, view: false, incidentsView: false },
     foundryMgmt: { add: false, edit: false, delete: false, view: false, tabWizard: false, tabResources: false, tabFoundryAction: false, tabChatPlayground: false, tabResourceSets: false, tabContentUnderstanding: false },
     contentUnderstanding: { view: false, runAnalysis: false, saveAnalysis: false, deleteAnalysis: false, menuVisibility: false },
+    hearingAi: { view: false, runAnalysis: false, saveAnalysis: false, deleteAnalysis: false, menuVisibility: false },
     eval: { view: false, run: false, review: false, finalize: false, menuVisibility: false },
     documentTranslation: { view: false, runTranslation: false, deleteTranslation: false },
     sftpMgmt: { view: false, create: false, update: false, disable: false, delete: false, mapUser: false, viewSelfAccess: false, rotateSshSelf: false, rotatePasswordSelf: false },
@@ -282,6 +290,7 @@ export default function RolesPermissions() {
     siemManagement: { install: false, delete: false, enableDisable: false, view: false, incidentsView: false },
     foundryMgmt: { add: false, edit: false, delete: false, view: false, tabWizard: false, tabResources: false, tabFoundryAction: false, tabChatPlayground: false, tabResourceSets: false, tabContentUnderstanding: false },
     contentUnderstanding: { view: false, runAnalysis: false, saveAnalysis: false, deleteAnalysis: false, menuVisibility: false },
+    hearingAi: { view: false, runAnalysis: false, saveAnalysis: false, deleteAnalysis: false, menuVisibility: false },
     eval: { view: false, run: false, review: false, finalize: false, menuVisibility: false },
     documentTranslation: { view: false, runTranslation: false, deleteTranslation: false },
     sftpMgmt: { view: false, create: false, update: false, disable: false, delete: false, mapUser: false, viewSelfAccess: false, rotateSshSelf: false, rotatePasswordSelf: false },
@@ -365,6 +374,7 @@ export default function RolesPermissions() {
       siemManagement: { install: false, delete: false, enableDisable: false, view: false, incidentsView: false },
       foundryMgmt: { add: false, edit: false, delete: false, view: false, tabWizard: false, tabResources: false, tabFoundryAction: false, tabChatPlayground: false, tabResourceSets: false, tabContentUnderstanding: false },
       contentUnderstanding: { view: false, runAnalysis: false, saveAnalysis: false, deleteAnalysis: false, menuVisibility: false },
+      hearingAi: { view: false, runAnalysis: false, saveAnalysis: false, deleteAnalysis: false, menuVisibility: false },
       eval: { view: false, run: false, review: false, finalize: false, menuVisibility: false },
       documentTranslation: { view: false, runTranslation: false, deleteTranslation: false },
       sftpMgmt: { view: false, create: false, update: false, disable: false, delete: false, mapUser: false, viewSelfAccess: false, rotateSshSelf: false, rotatePasswordSelf: false },
@@ -404,6 +414,7 @@ export default function RolesPermissions() {
       siemManagement: { install: false, delete: false, enableDisable: false, view: false, incidentsView: false },
       foundryMgmt: { add: false, edit: false, delete: false, view: false, tabWizard: false, tabResources: false, tabFoundryAction: false, tabChatPlayground: false, tabResourceSets: false, tabContentUnderstanding: false },
       contentUnderstanding: { view: false, runAnalysis: false, saveAnalysis: false, deleteAnalysis: false, menuVisibility: false },
+      hearingAi: { view: false, runAnalysis: false, saveAnalysis: false, deleteAnalysis: false, menuVisibility: false },
       eval: { view: false, run: false, review: false, finalize: false, menuVisibility: false },
       documentTranslation: { view: false, runTranslation: false, deleteTranslation: false },
       sftpMgmt: { view: false, create: false, update: false, disable: false, delete: false, mapUser: false, viewSelfAccess: false, rotateSshSelf: false, rotatePasswordSelf: false },
@@ -574,6 +585,7 @@ export default function RolesPermissions() {
         siemManagement: { install: false, delete: false, enableDisable: false, view: false, incidentsView: false },
         foundryMgmt: { add: false, edit: false, delete: false, view: false, tabWizard: false, tabResources: false, tabFoundryAction: false, tabChatPlayground: false, tabResourceSets: false, tabContentUnderstanding: false },
         contentUnderstanding: { view: false, runAnalysis: false, saveAnalysis: false, deleteAnalysis: false, menuVisibility: false },
+        hearingAi: { view: false, runAnalysis: false, saveAnalysis: false, deleteAnalysis: false, menuVisibility: false },
         eval: { view: false, run: false, review: false, finalize: false, menuVisibility: false },
         documentTranslation: { view: false, runTranslation: false, deleteTranslation: false },
         sftpMgmt: { view: false, create: false, update: false, disable: false, delete: false, mapUser: false, viewSelfAccess: false, rotateSshSelf: false, rotatePasswordSelf: false },
@@ -604,6 +616,7 @@ export default function RolesPermissions() {
         siemManagement: { ...defaultPermissions.siemManagement, ...apiPermissions.siemMgmt },
         foundryMgmt: { ...defaultPermissions.foundryMgmt, ...apiPermissions.foundryMgmt },
         contentUnderstanding: { ...defaultPermissions.contentUnderstanding, ...apiPermissions.contentUnderstanding },
+        hearingAi: { ...defaultPermissions.hearingAi, ...apiPermissions.hearingAi },
         eval: { ...defaultPermissions.eval, ...apiPermissions.eval },
         documentTranslation: { ...defaultPermissions.documentTranslation, ...apiPermissions.documentTranslation },
         helpCenter: { ...defaultPermissions.helpCenter, ...apiPermissions.helpCenter }
@@ -931,6 +944,10 @@ export default function RolesPermissions() {
                       <TabsTrigger value="content-understanding" className="w-full justify-start gap-2 px-3 py-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
                         <Scan className="w-4 h-4 shrink-0" />
                         Content Understanding
+                      </TabsTrigger>
+                      <TabsTrigger value="hearing-ai" className="w-full justify-start gap-2 px-3 py-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+                        <Ear className="w-4 h-4 shrink-0" />
+                        HearingAI
                       </TabsTrigger>
                       <TabsTrigger value="document-translation" className="w-full justify-start gap-2 px-3 py-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
                         <Languages className="w-4 h-4 shrink-0" />
@@ -1604,6 +1621,72 @@ export default function RolesPermissions() {
                                   onCheckedChange={(checked) => updatePermission("contentUnderstanding", "menuVisibility", checked)}
                                 />
                                 <Label htmlFor="contentUnderstanding-menuVisibility" className="text-sm">Show in Sidebar Menu</Label>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </TabsContent>
+
+                  <TabsContent value="hearing-ai">
+                    <Card>
+                      <CardHeader className="pb-3">
+                        <div className="flex items-center space-x-2">
+                          <Ear className="w-5 h-5" />
+                          <CardTitle className="text-lg">HearingAI</CardTitle>
+                        </div>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <div className="space-y-4">
+                          <div>
+                            <h4 className="text-sm font-medium mb-3">Analysis Permissions</h4>
+                            <div className="grid grid-cols-2 gap-4">
+                              <div className="flex items-center space-x-2">
+                                <Checkbox
+                                  id="hearingAi-view"
+                                  checked={permissions.hearingAi?.view || false}
+                                  onCheckedChange={(checked) => updatePermission("hearingAi", "view", checked)}
+                                />
+                                <Label htmlFor="hearingAi-view" className="text-sm">View Analysis Results</Label>
+                              </div>
+                              <div className="flex items-center space-x-2">
+                                <Checkbox
+                                  id="hearingAi-runAnalysis"
+                                  checked={permissions.hearingAi?.runAnalysis || false}
+                                  onCheckedChange={(checked) => updatePermission("hearingAi", "runAnalysis", checked)}
+                                />
+                                <Label htmlFor="hearingAi-runAnalysis" className="text-sm">Run Analysis</Label>
+                              </div>
+                              <div className="flex items-center space-x-2">
+                                <Checkbox
+                                  id="hearingAi-saveAnalysis"
+                                  checked={permissions.hearingAi?.saveAnalysis || false}
+                                  onCheckedChange={(checked) => updatePermission("hearingAi", "saveAnalysis", checked)}
+                                />
+                                <Label htmlFor="hearingAi-saveAnalysis" className="text-sm">Save Analysis Results</Label>
+                              </div>
+                              <div className="flex items-center space-x-2">
+                                <Checkbox
+                                  id="hearingAi-deleteAnalysis"
+                                  checked={permissions.hearingAi?.deleteAnalysis || false}
+                                  onCheckedChange={(checked) => updatePermission("hearingAi", "deleteAnalysis", checked)}
+                                />
+                                <Label htmlFor="hearingAi-deleteAnalysis" className="text-sm">Delete Analysis Results</Label>
+                              </div>
+                            </div>
+                          </div>
+                          <Separator />
+                          <div>
+                            <h4 className="text-sm font-medium mb-3">Menu Visibility</h4>
+                            <div className="grid grid-cols-2 gap-4">
+                              <div className="flex items-center space-x-2">
+                                <Checkbox
+                                  id="hearingAi-menuVisibility"
+                                  checked={permissions.hearingAi?.menuVisibility || false}
+                                  onCheckedChange={(checked) => updatePermission("hearingAi", "menuVisibility", checked)}
+                                />
+                                <Label htmlFor="hearingAi-menuVisibility" className="text-sm">Show in Sidebar Menu</Label>
                               </div>
                             </div>
                           </div>
@@ -2291,6 +2374,10 @@ export default function RolesPermissions() {
                     <TabsTrigger value="contentUnderstanding" className="w-full justify-start gap-2 px-3 py-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
                       <Scan className="w-4 h-4 shrink-0" />
                       Content Understanding
+                    </TabsTrigger>
+                    <TabsTrigger value="hearingAi" className="w-full justify-start gap-2 px-3 py-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+                      <Ear className="w-4 h-4 shrink-0" />
+                      HearingAI
                     </TabsTrigger>
                     <TabsTrigger value="documentTranslation" className="w-full justify-start gap-2 px-3 py-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
                       <Languages className="w-4 h-4 shrink-0" />
@@ -3608,6 +3695,132 @@ export default function RolesPermissions() {
                                     runAnalysis: prev.permissions.contentUnderstanding?.runAnalysis || false,
                                     saveAnalysis: prev.permissions.contentUnderstanding?.saveAnalysis || false,
                                     deleteAnalysis: prev.permissions.contentUnderstanding?.deleteAnalysis || false,
+                                    menuVisibility: checked === true
+                                  }
+                                }
+                              } : null);
+                            }}
+                          />
+                          <Label>Show in Sidebar Menu</Label>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="hearingAi" className="space-y-4">
+                  <div className="space-y-4">
+                    <div>
+                      <h4 className="text-sm font-medium mb-3">Analysis Permissions</h4>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="flex items-center space-x-2">
+                          <Checkbox
+                            checked={editingRole.permissions.hearingAi?.view || false}
+                            onCheckedChange={(checked) => {
+                              setEditingRole(prev => prev ? {
+                                ...prev,
+                                permissions: {
+                                  ...prev.permissions,
+                                  hearingAi: {
+                                    ...prev.permissions.hearingAi,
+                                    view: checked === true,
+                                    runAnalysis: prev.permissions.hearingAi?.runAnalysis || false,
+                                    saveAnalysis: prev.permissions.hearingAi?.saveAnalysis || false,
+                                    deleteAnalysis: prev.permissions.hearingAi?.deleteAnalysis || false,
+                                    menuVisibility: prev.permissions.hearingAi?.menuVisibility || false
+                                  }
+                                }
+                              } : null);
+                            }}
+                          />
+                          <Label>View Analysis Results</Label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <Checkbox
+                            checked={editingRole.permissions.hearingAi?.runAnalysis || false}
+                            onCheckedChange={(checked) => {
+                              setEditingRole(prev => prev ? {
+                                ...prev,
+                                permissions: {
+                                  ...prev.permissions,
+                                  hearingAi: {
+                                    ...prev.permissions.hearingAi,
+                                    view: prev.permissions.hearingAi?.view || false,
+                                    runAnalysis: checked === true,
+                                    saveAnalysis: prev.permissions.hearingAi?.saveAnalysis || false,
+                                    deleteAnalysis: prev.permissions.hearingAi?.deleteAnalysis || false,
+                                    menuVisibility: prev.permissions.hearingAi?.menuVisibility || false
+                                  }
+                                }
+                              } : null);
+                            }}
+                          />
+                          <Label>Run Analysis</Label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <Checkbox
+                            checked={editingRole.permissions.hearingAi?.saveAnalysis || false}
+                            onCheckedChange={(checked) => {
+                              setEditingRole(prev => prev ? {
+                                ...prev,
+                                permissions: {
+                                  ...prev.permissions,
+                                  hearingAi: {
+                                    ...prev.permissions.hearingAi,
+                                    view: prev.permissions.hearingAi?.view || false,
+                                    runAnalysis: prev.permissions.hearingAi?.runAnalysis || false,
+                                    saveAnalysis: checked === true,
+                                    deleteAnalysis: prev.permissions.hearingAi?.deleteAnalysis || false,
+                                    menuVisibility: prev.permissions.hearingAi?.menuVisibility || false
+                                  }
+                                }
+                              } : null);
+                            }}
+                          />
+                          <Label>Save Analysis Results</Label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <Checkbox
+                            checked={editingRole.permissions.hearingAi?.deleteAnalysis || false}
+                            onCheckedChange={(checked) => {
+                              setEditingRole(prev => prev ? {
+                                ...prev,
+                                permissions: {
+                                  ...prev.permissions,
+                                  hearingAi: {
+                                    ...prev.permissions.hearingAi,
+                                    view: prev.permissions.hearingAi?.view || false,
+                                    runAnalysis: prev.permissions.hearingAi?.runAnalysis || false,
+                                    saveAnalysis: prev.permissions.hearingAi?.saveAnalysis || false,
+                                    deleteAnalysis: checked === true,
+                                    menuVisibility: prev.permissions.hearingAi?.menuVisibility || false
+                                  }
+                                }
+                              } : null);
+                            }}
+                          />
+                          <Label>Delete Analysis Results</Label>
+                        </div>
+                      </div>
+                    </div>
+                    <Separator />
+                    <div>
+                      <h4 className="text-sm font-medium mb-3">Menu Visibility</h4>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="flex items-center space-x-2">
+                          <Checkbox
+                            checked={editingRole.permissions.hearingAi?.menuVisibility || false}
+                            onCheckedChange={(checked) => {
+                              setEditingRole(prev => prev ? {
+                                ...prev,
+                                permissions: {
+                                  ...prev.permissions,
+                                  hearingAi: {
+                                    ...prev.permissions.hearingAi,
+                                    view: prev.permissions.hearingAi?.view || false,
+                                    runAnalysis: prev.permissions.hearingAi?.runAnalysis || false,
+                                    saveAnalysis: prev.permissions.hearingAi?.saveAnalysis || false,
+                                    deleteAnalysis: prev.permissions.hearingAi?.deleteAnalysis || false,
                                     menuVisibility: checked === true
                                   }
                                 }
