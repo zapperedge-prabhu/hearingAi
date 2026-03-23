@@ -178,7 +178,7 @@ const mainNavigation = [
     href: "/hearing-ai",
     icon: Scan,
     permissionCheck: (permissions: any) => 
-      permissions?.contentUnderstanding?.menuVisibility
+      permissions?.hearingAi?.menuVisibility
   },
   {
     name: "Document Translation",

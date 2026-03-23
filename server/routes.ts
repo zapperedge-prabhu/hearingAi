@@ -1144,6 +1144,7 @@ Generated on: ${timestamp}
 import { AzureMonitorService } from "./azureMonitorService";
 
 import { CuPollingService } from "./cuPollingService";
+import { HaiPollingService } from "./hearingAiPollingService";
 import { EvalPollingService } from "./evalPollingService";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -1275,6 +1276,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Start background CU polling service AFTER database is initialized
       // This prevents "relation does not exist" errors on fresh deployments
       CuPollingService.getInstance().start();
+      HaiPollingService.getInstance().start();
       EvalPollingService.getInstance().start();
     } catch (error) {
       console.error("Failed to initialize database or seed initial data:", error);

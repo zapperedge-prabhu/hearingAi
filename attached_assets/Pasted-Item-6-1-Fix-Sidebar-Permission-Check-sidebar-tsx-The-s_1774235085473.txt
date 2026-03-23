@@ -1,0 +1,72 @@
+Item 6.1 — Fix Sidebar Permission Check  (sidebar.tsx)
+
+The sidebar entry for HearingAI currently references the Content Understanding permission, not the HearingAI permission. This means HearingAI appears in the sidebar for anyone with CU access — and is invisible to users who have HearingAI access but not CU access.
+
+
+Item 6.2 — Start HaiPollingService on Server Boot  (routes.ts)
+
+HaiPollingService is defined but never started. Without this, async jobs submitted by users will only be polled while the user's browser has the page open. Jobs submitted and then navigated away from will stall at 'running' status indefinitely.
+
+// server/routes.ts — find the CuPollingService start (approximately line 1277):
+
+// Existing code:
+import { CuPollingService } from './cuPollingService';
+CuPollingService.getInstance().start();
+
+// Add these two lines immediately after:
+import { HaiPollingService } from './hearingAiPollingService';
+HaiPollingService.getInstance().start();
+
+Item 6.3 — Add hearingAi Mapping to use-role-permissions.ts
+
+The frontend hook that transforms the permissions API response must include hearingAi. Without this, permissions?.hearingAi will always be undefined, and the sidebar fix in Item 6.1 will never show the menu item.
+
+// client/src/hooks/use-role-permissions.ts
+// Find where contentUnderstanding is mapped — add hearingAi in the same pattern:
+
+// hearingAi: {
+//   view:           data?.hearingAi?.view           ?? false,
+//   runAnalysis:    data?.hearingAi?.runAnalysis     ?? false,
+//   saveAnalysis:   data?.hearingAi?.saveAnalysis    ?? false,
+//   deleteAnalysis: data?.hearingAi?.deleteAnalysis  ?? false,
+//   menuVisibility: data?.hearingAi?.menuVisibility  ?? false,
+// }
+
+// Also confirm the /api/permissions or /api/roles endpoint returns
+// hearingAi as a top-level key — check the permissions API handler
+// to verify permissionHearingAi is included in the JOIN / SELECT.
+
+Item 6.4 — Add HearingAI to Roles & Permissions Admin UI
+
+Admins need a way to grant users HearingAI permissions. The Roles & Permissions page (client/src/pages/roles-permissions.tsx) must include a HearingAI section with toggles for all five permission fields. Follow the exact same structure used for the Content Understanding section.
+
+•	view — View saved analysis results and access the HearingAI menu
+•	runAnalysis — Execute CU analysis and post-call analysis
+•	saveAnalysis — Manually save analysis results to blob storage
+•	deleteAnalysis — Delete analysis result blobs and job records
+•	menuVisibility — Show HearingAI in the sidebar navigation
+
+
+Item 6.6 — Verify App.tsx Route Registration
+
+Confirm that the /hearing-ai route is registered in client/src/App.tsx. If it is missing, navigating to the page will show a 404 or the not-found component.
+
+// client/src/App.tsx — confirm these exist:
+import HearingAI from './pages/hearing-ai';
+
+// Inside the Router:
+<Route path='/hearing-ai' element={<HearingAI />} />
+
+
+Environment Variables
+Variable	Default  /  Purpose
+ZAPPER_HAI_RESULTS_DIR	Default: 'hai_folder' — Azure Blob folder name for all HearingAI result JSON files.
+ZAPPER_HAI_HAI_MAX_RESULTS_PER_FILE	Default: 0 (unlimited) — Maximum saved results per source file. Set to a positive integer to cap saves per file.
+ZAPPER_CU_POLL_INTERVAL_MS	Default: 5000ms — Shared with CuPollingService. How often HaiPollingService wakes up to check active jobs.
+ZAPPER_CU_MAX_POLLS	Default: 2880 — Maximum polling attempts before marking a job as timed out.  2880 × 5s = 4 hours.
+ZAPPER_CU_VIDEO_TIMEOUT_SEC	Default: 900s — Maximum wait time for synchronous video analysis via analyzeDocument().
+ZAPPER_CU_AUDIO_TIMEOUT_SEC	Default: 120s — Maximum wait time for synchronous audio analysis.
+ZAPPER_CU_DOCUMENT_TIMEOUT_SEC	Default: 120s — Maximum wait time for synchronous document analysis.
+ZAPPER_CU_DEFAULT_TIMEOUT_SEC	Default: 120s — Fallback for content types without a specific timeout variable.
+ZAPPER_CU_MAX_RESULTS_PER_FILE	Default: 0 — Returned by /api/hai/config as maxResultsPerFile for the frontend to enforce.
+
