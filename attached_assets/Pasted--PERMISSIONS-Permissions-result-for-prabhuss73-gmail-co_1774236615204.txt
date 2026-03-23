@@ -1,0 +1,157 @@
+✅ [PERMISSIONS] Permissions result for prabhuss73@gmail.com / roleId 1: {
+  "userMgmt": {
+    "add": true,
+    "edit": true,
+    "delete": true,
+    "view": true,
+    "enableDisable": true
+  },
+  "roleMgmt": {
+    "add": true,
+    "edit": true,
+    "delete": true,
+    "view": true
+  },
+  "orgMgmt": {
+    "add": true,
+    "edit": true,
+    "delete": true,
+    "view": true
+  },
+  "storageMgmt": {
+    "addStorageContainer": true,
+    "addContainer": true,
+    "view": true,
+    "delete": true,
+    "dataProtection": true,
+    "dataLifecycle": true,
+    "inventoryView": true,
+    "inventoryConfigure": true
+  },
+  "fileMgmt": {
+    "uploadFile": true,
+    "uploadFolder": true,
+    "downloadFile": true,
+    "downloadFolder": true,
+    "viewFiles": true,
+    "createFolder": true,
+    "deleteFilesAndFolders": true,
+    "searchFiles": true,
+    "renameFile": true,
+    "rehydrate": true
+  },
+  "activityLogs": {
+    "view": true
+  },
+  "aiAgentMgmt": {
+    "add": true,
+    "edit": true,
+    "delete": true,
+    "view": true
+  },
+  "pgpKeyMgmt": {
+    "view": true,
+    "generate": true,
+    "delete": true,
+    "copy": true,
+    "decrypt": true
+  },
+  "helpCenter": {
+    "chapterWiseHelp": {
+      "cmk_encryption": true,
+      "data_protection": true,
+      "file_management": true,
+      "getting_started": true,
+      "user_management": true,
+      "activity_logging": true,
+      "sftp_local_users": true,
+      "pgp_key_management": true,
+      "storage_management": true,
+      "ai_agent_management": true,
+      "document_translation": true,
+      "content_understanding": true,
+      "organization_management": true,
+      "data_lifecycle_management": true,
+      "siem_sentinel_integration": true,
+      "foundry_ai_chat_playground": true,
+      "role_permission_management": true
+    },
+    "api": {
+      "api_integration_guide": true
+    },
+    "envVariable": {
+      "configuration_settings": true
+    },
+    "troubleshooting": {
+      "malware_scanning": true,
+      "storage_creation": true
+    }
+  },
+  "siemMgmt": {
+    "install": true,
+    "delete": true,
+    "enableDisable": true,
+    "view": true,
+    "incidentsView": true
+  },
+  "foundryMgmt": {
+    "add": true,
+    "edit": true,
+    "delete": true,
+    "view": true,
+    "tabWizard": true,
+    "tabResources": true,
+    "tabFoundryAction": true,
+    "tabChatPlayground": true,
+    "tabResourceSets": true,
+    "tabContentUnderstanding": true
+  },
+  "contentUnderstanding": {
+    "view": true,
+    "runAnalysis": true,
+    "saveAnalysis": true,
+    "deleteAnalysis": true,
+    "menuVisibility": true
+  },
+  "hearingAi": {
+    "view": true,
+    "runAnalysis": true,
+    "saveAnalysis": true,
+    "deleteAnalysis": true,
+    "menuVisibility": true
+  },
+  "documentTranslation": {
+    "view": true,
+    "runTranslation": true,
+    "deleteTranslation": true
+  },
+  "sftpMgmt": {
+    "view": true,
+    "create": true,
+    "update": true,
+    "disable": true,
+    "delete": true,
+    "mapUser": true,
+    "viewSelfAccess": true,
+    "rotateSshSelf": true,
+    "rotatePasswordSelf": true
+  },
+  "customerOnboarding": {
+    "view": true,
+    "upload": true,
+    "commit": true,
+    "delete": true
+  },
+  "transferReports": {
+    "view": true,
+    "viewDetails": true,
+    "download": true
+  },
+  "eval": {
+    "view": true,
+    "run": true,
+    "review": true,
+    "finalize": true,
+    "menuVisibility": true
+  }
+}

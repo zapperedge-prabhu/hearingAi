@@ -3012,6 +3012,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
             deleteAnalysis: modularPermissions.cu_delete_analysis || false,
             menuVisibility: modularPermissions.cu_menu_visibility || false,
           },
+          hearingAi: {
+            view: modularPermissions.hai_view || false,
+            runAnalysis: modularPermissions.hai_run_analysis || false,
+            saveAnalysis: modularPermissions.hai_save_analysis || false,
+            deleteAnalysis: modularPermissions.hai_delete_analysis || false,
+            menuVisibility: modularPermissions.hai_menu_visibility || false,
+          },
           documentTranslation: {
             view: modularPermissions.dt_view || false,
             runTranslation: modularPermissions.dt_run_translation || false,
@@ -3100,6 +3107,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           siemMgmt: { install: false, delete: false, enableDisable: false, view: false, incidentsView: false },
           foundryMgmt: { add: false, edit: false, delete: false, view: false, tabWizard: false, tabResources: false, tabFoundryAction: false, tabChatPlayground: false, tabResourceSets: false, tabContentUnderstanding: false },
           contentUnderstanding: { view: false, runAnalysis: false, saveAnalysis: false, deleteAnalysis: false, menuVisibility: false },
+          hearingAi: { view: false, runAnalysis: false, saveAnalysis: false, deleteAnalysis: false, menuVisibility: false },
           documentTranslation: { view: false, runTranslation: false, deleteTranslation: false },
           sftpMgmt: { view: false, create: false, update: false, disable: false, delete: false, mapUser: false, viewSelfAccess: false, rotateSshSelf: false, rotatePasswordSelf: false },
           customerOnboarding: { view: false, upload: false, commit: false, delete: false },

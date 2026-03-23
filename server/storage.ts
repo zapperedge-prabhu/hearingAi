@@ -1407,6 +1407,7 @@ export class DatabaseStorage implements IStorage {
         pfo.tab_wizard as foundry_tab_wizard, pfo.tab_resources as foundry_tab_resources, pfo.tab_foundry_action as foundry_tab_foundry_action,
         pfo.tab_chat_playground as foundry_tab_chat_playground, pfo.tab_resource_sets as foundry_tab_resource_sets, pfo.tab_content_understanding as foundry_tab_content_understanding,
         pcu.view as cu_view, pcu.run_analysis as cu_run_analysis, pcu.save_analysis as cu_save_analysis, pcu.delete_analysis as cu_delete_analysis, pcu.menu_visibility as cu_menu_visibility,
+        phai.view as hai_view, phai.run_analysis as hai_run_analysis, phai.save_analysis as hai_save_analysis, phai.delete_analysis as hai_delete_analysis, phai.menu_visibility as hai_menu_visibility,
         pdt.view as dt_view, pdt.run_translation as dt_run_translation, pdt.delete_translation as dt_delete_translation,
         psftp.view as sftp_view, psftp."create" as sftp_create, psftp."update" as sftp_update, psftp.disable as sftp_disable, psftp.delete as sftp_delete, psftp.map_user as sftp_map_user, psftp.view_self_access as sftp_view_self_access, psftp.rotate_ssh_self as sftp_rotate_ssh_self, psftp.rotate_password_self as sftp_rotate_password_self,
         pco.view as co_view, pco.upload as co_upload, pco.commit as co_commit, pco.delete as co_delete,
@@ -1425,6 +1426,7 @@ export class DatabaseStorage implements IStorage {
       LEFT JOIN permission_siem_mgmt psiem ON rpm.permission_siem_mgmt_id = psiem.id
       LEFT JOIN permission_foundry_mgmt pfo ON rpm.permission_foundry_mgmt_id = pfo.id
       LEFT JOIN permission_content_understanding pcu ON rpm.permission_content_understanding_id = pcu.id
+      LEFT JOIN permission_hearing_ai phai ON rpm.permission_hearing_ai_id = phai.id
       LEFT JOIN permission_document_translation pdt ON rpm.permission_document_translation_id = pdt.id
       LEFT JOIN permission_sftp_mgmt psftp ON rpm.permission_sftp_mgmt_id = psftp.id
       LEFT JOIN permission_customer_onboarding pco ON rpm.permission_customer_onboarding_id = pco.id
