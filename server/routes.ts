@@ -239,6 +239,19 @@ const rolePermissionsSchema = z.object({
     deleteAnalysis: false,
     menuVisibility: false,
   }),
+  hearingAi: z.object({
+    view: createStrictBooleanSchema(),
+    runAnalysis: createStrictBooleanSchema(),
+    saveAnalysis: createStrictBooleanSchema(),
+    deleteAnalysis: createStrictBooleanSchema(),
+    menuVisibility: createStrictBooleanSchema(),
+  }).strict().optional().default({
+    view: false,
+    runAnalysis: false,
+    saveAnalysis: false,
+    deleteAnalysis: false,
+    menuVisibility: false,
+  }),
   documentTranslation: z.object({
     view: createStrictBooleanSchema(),
     runTranslation: createStrictBooleanSchema(),
